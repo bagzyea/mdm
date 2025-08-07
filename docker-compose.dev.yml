@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mdm-backend:
+    build: ./backend
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://mdm_user:mdm_password@db:5432/mdm_dev
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - db
+      - redis
+    command: npm run dev
+
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_DB=mdm_dev
+      - POSTGRES_USER=mdm_user
+      - POSTGRES_PASSWORD=mdm_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
