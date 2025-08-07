@@ -41,15 +41,71 @@ app.get('/health', (req, res) => {
 
 // Import routes
 import deviceRoutes from './routes/deviceRoutes';
+import policyRoutes from './routes/policyRoutes';
+import commandRoutes from './routes/commandRoutes';
 
 // API routes
 app.use('/api/devices', deviceRoutes);
+app.use('/api/policies', policyRoutes);
+app.use('/api/commands', commandRoutes);
+
+// Import command service
+import { CommandService } from './services/commandService';
+
+// Initialize command service
+const commandService = new CommandService(io);
+
+// Start command queue processor (runs every 30 seconds)
+setInterval(() => {
+  commandService.processCommandQueue();
+}, 30000);
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.log('Device connected:', socket.id);
   
-  socket.on('deviceHeartbeat', async (deviceId) => {
+  // Device identification
+  socket.on('deviceIdentify', async (deviceId: string) => {
+    socket.data.deviceId = deviceId;
+    socket.join(`device_${deviceId}`); // Join device-specific room
+    
+    try {
+      // Update device status and last seen
+      await prisma.device.update({
+        where: { deviceId },
+        data: { 
+          status: 'ACTIVE',
+          lastSeen: new Date() 
+        }
+      });
+      
+      // Check for pending commands
+      const pendingCommands = await prisma.remoteCommand.findMany({
+        where: { 
+          device: { deviceId },
+          status: 'PENDING'
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+      
+      // Send pending commands to device
+      for (const command of pendingCommands) {
+        await commandService.notifyDeviceOfCommand(
+          deviceId,
+          command.id,
+          command.command as any,
+          command.parameters
+        );
+      }
+      
+      console.log(`Device ${deviceId} identified and ${pendingCommands.length} pending commands sent`);
+    } catch (error) {
+      console.error('Error handling device identification:', error);
+    }
+  });
+  
+  // Device heartbeat
+  socket.on('deviceHeartbeat', async (deviceId: string) => {
     try {
       await prisma.device.update({
         where: { deviceId },
@@ -60,8 +116,96 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('disconnect', () => {
-    console.log('Device disconnected:', socket.id);
+  // Command response from device
+  socket.on('commandResponse', async (data: {
+    commandId: string;
+    deviceId: string;
+    result: any;
+  }) => {
+    try {
+      await commandService.handleCommandResponse(
+        data.deviceId,
+        data.commandId,
+        data.result
+      );
+    } catch (error) {
+      console.error('Error handling command response:', error);
+    }
+  });
+  
+  // Device status update
+  socket.on('deviceStatusUpdate', async (data: {
+    deviceId: string;
+    status: string;
+    location?: any;
+    batteryLevel?: number;
+    networkInfo?: any;
+  }) => {
+    try {
+      await prisma.device.update({
+        where: { deviceId: data.deviceId },
+        data: {
+          status: data.status as any,
+          location: data.location,
+          lastSeen: new Date()
+        }
+      });
+      
+      // Log status change event
+      await prisma.deviceEvent.create({
+        data: {
+          deviceId: data.deviceId,
+          eventType: 'STATUS_UPDATE',
+          eventData: {
+            oldStatus: data.status,
+            newStatus: data.status,
+            additionalData: {
+              batteryLevel: data.batteryLevel,
+              networkInfo: data.networkInfo
+            }
+          } as any
+        }
+      });
+      
+      // Notify admin dashboard of device status change
+      io.emit('deviceStatusChanged', {
+        deviceId: data.deviceId,
+        status: data.status,
+        timestamp: new Date(),
+        additionalData: {
+          batteryLevel: data.batteryLevel,
+          location: data.location,
+          networkInfo: data.networkInfo
+        }
+      });
+    } catch (error) {
+      console.error('Error updating device status:', error);
+    }
+  });
+  
+  // Handle disconnect
+  socket.on('disconnect', async () => {
+    const deviceId = socket.data.deviceId;
+    console.log(`Device disconnected: ${socket.id}${deviceId ? ` (${deviceId})` : ''}`);
+    
+    // Update device status to INACTIVE if it was a device connection
+    if (deviceId) {
+      try {
+        await prisma.device.update({
+          where: { deviceId },
+          data: { status: 'INACTIVE' }
+        });
+        
+        // Notify admin dashboard
+        io.emit('deviceStatusChanged', {
+          deviceId,
+          status: 'INACTIVE',
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('Error updating device status on disconnect:', error);
+      }
+    }
   });
 });
 
