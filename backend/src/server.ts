@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { createServer } from 'http';
@@ -23,11 +24,22 @@ const io = new SocketIOServer(server, {
   }
 });
 
+// Import middleware
+import { securityHeaders, validateRequest } from './middleware/auth';
+
 // Middleware
 app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(securityHeaders);
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? 
+    ['https://admin.yourdomain.com', 'https://yourdomain.com'] : 
+    ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:8080'],
+  credentials: true
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+app.use(validateRequest);
 app.use(morgan('combined'));
 
 // Health check endpoint
@@ -43,11 +55,32 @@ app.get('/health', (req, res) => {
 import deviceRoutes from './routes/deviceRoutes';
 import policyRoutes from './routes/policyRoutes';
 import commandRoutes from './routes/commandRoutes';
+import authRoutes from './routes/authRoutes';
 
-// API routes
-app.use('/api/devices', deviceRoutes);
-app.use('/api/policies', policyRoutes);
-app.use('/api/commands', commandRoutes);
+// Import authentication middleware
+import { authenticateToken, requirePermission, optionalAuth } from './middleware/auth';
+
+// Public routes (no authentication required)
+app.use('/api/auth', authRoutes);
+
+// Protected API routes (authentication required)
+app.use('/api/devices', 
+  authenticateToken, 
+  requirePermission('devices', 'read'), 
+  deviceRoutes
+);
+
+app.use('/api/policies', 
+  authenticateToken, 
+  requirePermission('policies', 'read'), 
+  policyRoutes
+);
+
+app.use('/api/commands', 
+  authenticateToken, 
+  requirePermission('commands', 'read'), 
+  commandRoutes
+);
 
 // Import command service
 import { CommandService } from './services/commandService';
