@@ -1,0 +1,154 @@
+// Enhanced Database Schema for Flexible APK Management
+// Add these models to your existing schema.prisma
+
+// APK Registry - Master catalog of all available applications
+model APKRegistry {
+  id              String   @id @default(cuid())
+  packageName     String   @unique // e.g., "com.getodk.collect.android"
+  appName         String   // e.g., "CSentry", "WPS Office", "PDF Reader"
+  displayName     String   // User-friendly name
+  description     String?
+  category        APKCategory // CENSUS, PRODUCTIVITY, UTILITY, etc.
+  version         String
+  versionCode     Int
+  minSdkVersion   Int      @default(21) // Minimum Android API level
+  targetSdkVersion Int     @default(33)
+  fileSize        BigInt   // File size in bytes
+  filePath        String   // Storage path to APK file
+  fileHash        String   // SHA-256 hash for integrity
+  icon            String?  // Path to app icon
+  screenshots     String[] // Array of screenshot paths
+  permissions     String[] // Required Android permissions
+  features        String[] // Required device features
+  
+  // Data folder associations
+  dataFolders     APKDataFolder[]
+  
+  // Compatibility info
+  supportedDeviceModels String[] // ["Samsung-T225", "ZTE", etc.]
+  isActive        Boolean  @default(true)
+  uploadedBy      String
+  uploadedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relationships
+  provisioningApps ProvisioningApp[]
+  
+  @@index([packageName])
+  @@index([category])
+  @@index([isActive])
+}
+
+// Data folders associated with APKs (especially for CSentry)
+model APKDataFolder {
+  id              String   @id @default(cuid())
+  apkId           String
+  name            String   // e.g., "Census Forms", "Lookup Tables"
+  description     String?
+  folderType      DataFolderType // FORMS, DATA, CONFIG, ASSETS
+  sourcePath      String   // Path to source folder on server
+  targetPath      String   // Target path on device (relative to app data)
+  isRequired      Boolean  @default(true)
+  folderSize      BigInt?  // Total folder size
+  fileCount       Int?     // Number of files in folder
+  checksum        String?  // Folder content checksum
+  
+  apk             APKRegistry @relation(fields: [apkId], references: [id], onDelete: Cascade)
+  
+  // Geographic/District specific data
+  geographicScope String?  // "ALL", "DISTRICT_SPECIFIC", "REGION_SPECIFIC"
+  applicableDistricts String[] // Array of district codes
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([apkId])
+  @@index([folderType])
+}
+
+// Enhanced ProvisioningApp model
+model ProvisioningApp {
+  id                String   @id @default(cuid())
+  profileId         String
+  apkId             String   // Reference to APK Registry
+  
+  // Installation configuration
+  installOrder      Int      @default(0)
+  isRequired        Boolean  @default(true)
+  autoStart         Boolean  @default(false)
+  
+  // Custom configuration for this provisioning
+  customPermissions String[] // Additional permissions beyond default
+  installationNotes String?  // Special installation instructions
+  
+  // Data folder selections
+  selectedDataFolders String[] // Array of APKDataFolder IDs to deploy
+  customDataMappings  Json?    // Custom path mappings if needed
+  
+  // Conditional installation
+  installConditions Json?    // Conditions for when to install this app
+  
+  // Relationships
+  profile           ProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  apk               APKRegistry @relation(fields: [apkId], references: [id])
+  
+  @@index([profileId])
+  @@index([apkId])
+  @@unique([profileId, apkId]) // Prevent duplicate apps in same profile
+}
+
+// File upload sessions for bulk APK management
+model APKUploadSession {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  status          UploadSessionStatus @default(PENDING)
+  totalFiles      Int      @default(0)
+  processedFiles  Int      @default(0)
+  successfulFiles Int      @default(0)
+  failedFiles     Int      @default(0)
+  uploadPath      String   // Base upload directory
+  uploadedBy      String
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Upload logs
+  logs            Json?    // Detailed processing logs
+  errors          Json?    // Error details
+  
+  @@index([status])
+  @@index([uploadedBy])
+}
+
+// Enums
+enum APKCategory {
+  CENSUS           // Census data collection apps
+  PRODUCTIVITY     // Office apps, PDF readers
+  UTILITY          // System utilities, tools
+  COMMUNICATION    // Messaging, email apps
+  MEDIA            // Photo, video apps
+  EDUCATION        // Training, learning apps
+  GOVERNMENT       // Official government apps
+  CUSTOM           // Custom developed apps
+}
+
+enum DataFolderType {
+  FORMS            // ODK/Census forms
+  DATA             // Pre-populated data
+  CONFIG           // Configuration files
+  ASSETS           // Images, media assets
+  TEMPLATES        // Document templates
+  LOOKUP_TABLES    // Reference data
+  GIS_DATA         // Geographic data
+  CERTIFICATES     // Security certificates
+}
+
+enum UploadSessionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}

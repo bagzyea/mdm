@@ -5,21 +5,22 @@ import { CommandType, CreateCommandRequest, CommandResult } from '../types/comma
 const prisma = new PrismaClient();
 
 export class CommandService {
-  constructor(private io: SocketIOServer) {}
+  constructor(private io: SocketIOServer) { }
 
   // Send real-time command notification to devices
-  async notifyDeviceOfCommand(deviceId: string, commandId: string, command: CommandType, parameters?: any) {
+  async notifyDeviceOfCommand(deviceId: string, commandId: string, command: CommandType, parameters?: unknown) {
     try {
       // Find device's socket connection
       const sockets = await this.io.fetchSockets();
       const deviceSocket = sockets.find(socket => socket.data.deviceId === deviceId);
 
       if (deviceSocket) {
-        // Send command directly to connected device
-        deviceSocket.emit('remoteCommand', {
+        // Send command directly to connected device.
+        // Shape: { commandId, commandType, payload } — matches Android handleServerCommand()
+        deviceSocket.emit('executeCommand', {
           commandId,
-          command,
-          parameters,
+          commandType: command,  // normalized field name used on Android
+          payload: parameters ?? {},
           timestamp: new Date().toISOString()
         });
 
@@ -67,7 +68,7 @@ export class CommandService {
           if (commandAge > timeoutMs) {
             await prisma.remoteCommand.update({
               where: { id: command.id },
-              data: { 
+              data: {
                 status: 'FAILED',
                 result: {
                   success: false,
@@ -118,8 +119,8 @@ export class CommandService {
         }
       });
 
-      // Emit to admin dashboard for real-time updates
-      this.io.emit('commandUpdate', {
+      // Emit to admin dashboard only — not all sockets (Fix 1.4)
+      this.io.to('admins').emit('commandUpdate', {
         commandId,
         deviceId,
         status: result.success ? 'EXECUTED' : 'FAILED',
@@ -180,7 +181,7 @@ export class CommandService {
   private async executeCommand(commandData: CreateCommandRequest) {
     // Validate devices
     const devices = await prisma.device.findMany({
-      where: { 
+      where: {
         id: { in: commandData.deviceIds },
         status: { in: ['ENROLLED', 'ACTIVE'] }
       }

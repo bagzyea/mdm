@@ -13,8 +13,10 @@ build/
 # Environment variables
 .env
 .env.local
+.env.development
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 
 # IDE files
@@ -69,3 +71,9 @@ android-app/*.iml
 ios/Pods/
 ios/build/
 ios/DerivedData/
+
+AUTHENTICATION_GUIDE.md
+COMPLETE_SETUP_GUIDE.md
+DOCKER_README.md
+DOCKER_SETUP_GUIDE.md
+DOCKER_TESTING_GUIDE.md

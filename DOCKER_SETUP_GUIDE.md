@@ -171,7 +171,7 @@ docker compose -f docker-compose.dev.yml up -d db redis
 ```
 
 ### 3. Wait for Services to Start
-```bash
+```bashAS
 # Check if services are running
 docker compose -f docker-compose.dev.yml ps
 

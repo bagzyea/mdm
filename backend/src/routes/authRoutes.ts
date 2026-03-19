@@ -21,6 +21,8 @@ import {
   auditLog,
   createRoleBasedRateLimit
 } from '../middleware/auth';
+import { validate, validateParams } from '../middleware/validation';
+import { loginSchema, registerSchema, refreshTokenSchema, userIdSchema } from '../schemas/authSchemas';
 
 const router = Router();
 
@@ -31,8 +33,8 @@ const roleBasedRateLimit = createRoleBasedRateLimit();
 router.use(roleBasedRateLimit);
 
 // Public routes (no authentication required)
-router.post('/login', auditLog('LOGIN', 'auth'), login);
-router.post('/refresh', refreshToken);
+router.post('/login', validate(loginSchema), auditLog('LOGIN', 'auth'), login);
+router.post('/refresh', validate(refreshTokenSchema), refreshToken);
 
 // Semi-public routes (optional authentication)
 router.post('/validate', authenticateToken, validateToken);
@@ -48,6 +50,7 @@ router.post('/logout', auditLog('LOGOUT', 'auth'), logout);
 
 // Admin-only routes
 router.post('/register', 
+  validate(registerSchema),
   requireRole('SUPER_ADMIN', 'ADMIN'),
   requirePermission('users', 'create'),
   auditLog('CREATE_USER', 'users'),
@@ -62,6 +65,7 @@ router.get('/users',
 );
 
 router.get('/users/:id', 
+  validateParams(userIdSchema),
   requireRole('SUPER_ADMIN', 'ADMIN'),
   requirePermission('users', 'read'),
   auditLog('GET_USER', 'users'),
@@ -69,6 +73,7 @@ router.get('/users/:id',
 );
 
 router.put('/users/:id', 
+  validateParams(userIdSchema),
   requireRole('SUPER_ADMIN', 'ADMIN'),
   requirePermission('users', 'update'),
   auditLog('UPDATE_USER', 'users'),
@@ -76,6 +81,7 @@ router.put('/users/:id',
 );
 
 router.delete('/users/:id', 
+  validateParams(userIdSchema),
   requireRole('SUPER_ADMIN'),
   requirePermission('users', 'delete'),
   auditLog('DELETE_USER', 'users'),
@@ -83,6 +89,7 @@ router.delete('/users/:id',
 );
 
 router.get('/users/:id/audit-log', 
+  validateParams(userIdSchema),
   requireRole('SUPER_ADMIN', 'ADMIN'),
   requirePermission('users', 'read'),
   auditLog('GET_USER_AUDIT_LOG', 'users'),

@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client';
-import { WebSocketMessage } from '@/types';
 
 export type WebSocketEventHandler = (data: any) => void;
 
@@ -9,6 +8,7 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private pendingAdminToken: string | null = null;
 
   constructor() {
     this.connect();
@@ -28,12 +28,11 @@ class WebSocketService {
     this.socket.on('connect', () => {
       console.log('WebSocket connected');
       this.reconnectAttempts = 0;
-      
-      // Emit any initialization events if needed
-      this.emit('adminDashboardConnected', {
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent
-      });
+
+      // If we have a pending admin token, authenticate immediately
+      if (this.pendingAdminToken) {
+        this.authenticateAdmin(this.pendingAdminToken);
+      }
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -69,6 +68,10 @@ class WebSocketService {
       this.triggerHandlers('deviceEnrolled', data);
     });
 
+    this.socket.on('deviceHeartbeat', (data) => {
+      this.triggerHandlers('deviceHeartbeat', data);
+    });
+
     // Command-related events
     this.socket.on('commandUpdate', (data) => {
       this.triggerHandlers('commandUpdate', data);
@@ -86,6 +89,16 @@ class WebSocketService {
     // User-related events
     this.socket.on('userActivity', (data) => {
       this.triggerHandlers('userActivity', data);
+    });
+
+    // Notification events (for admin notification system)
+    this.socket.on('deviceOffline', (data) => {
+      this.triggerHandlers('deviceOffline', data);
+    });
+
+    this.socket.on('adminConnected', (data) => {
+      console.log('Admin room joined:', data);
+      this.triggerHandlers('adminConnected', data);
     });
 
     // System alerts
@@ -174,6 +187,12 @@ class WebSocketService {
   subscribeToDeviceUpdates(handler: WebSocketEventHandler): void {
     this.on('deviceStatusChanged', handler);
     this.on('deviceEnrolled', handler);
+    this.on('deviceHeartbeat', handler);
+  }
+
+  // Subscribe to real-time heartbeat updates
+  subscribeToHeartbeatUpdates(handler: WebSocketEventHandler): void {
+    this.on('deviceHeartbeat', handler);
   }
 
   // Subscribe to command updates
@@ -207,18 +226,32 @@ class WebSocketService {
     this.emit('unsubscribeFromDeviceLocations', { deviceIds });
   }
 
-  // Join admin room for admin-specific updates
-  joinAdminRoom(): void {
-    this.emit('joinAdminRoom', {
-      timestamp: new Date().toISOString()
-    });
+  /**
+   * Authenticate as an admin and join the 'admins' room.
+   * The server expects an 'adminConnect' event with { token }.
+   */
+  joinAdminRoom(token?: string): void {
+    const jwt = token ?? localStorage.getItem('mdm_token');
+    if (!jwt) {
+      console.warn('Cannot join admin room: no auth token');
+      return;
+    }
+    this.pendingAdminToken = jwt;
+
+    if (this.socket?.connected) {
+      this.authenticateAdmin(jwt);
+    }
+    // else: will be sent automatically on next 'connect' event
   }
 
   // Leave admin room
   leaveAdminRoom(): void {
-    this.emit('leaveAdminRoom', {
-      timestamp: new Date().toISOString()
-    });
+    this.pendingAdminToken = null;
+  }
+
+  private authenticateAdmin(token: string): void {
+    if (!this.socket?.connected) return;
+    this.socket.emit('adminConnect', { token });
   }
 }
 

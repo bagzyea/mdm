@@ -127,8 +127,14 @@ export class AuthService {
 
   // User login
   async login(loginData: LoginRequest, ipAddress?: string, userAgent?: string): Promise<LoginResponse> {
-    const user = await prisma.user.findUnique({
-      where: { username: loginData.username }
+    // Try to find user by email first, then by username
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: loginData.username },
+          { username: loginData.username }
+        ]
+      }
     });
 
     if (!user || !user.isActive) {

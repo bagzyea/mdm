@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, LoginCredentials, AuthResponse } from '@/types';
-import { apiService } from '@/services/api';
-import { websocketService } from '@/services/websocket';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { User, LoginCredentials, AuthResponse } from '../types';
+import { apiService } from '../services/api';
+import { websocketService } from '../services/websocket';
+import logger from '../utils/logger';
 
 interface AuthContextType {
   user: User | null;
@@ -53,41 +56,99 @@ const ROLE_PERMISSIONS: Record<string, Array<{ resource: string; actions: string
 };
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Graceful logout function for token expiry
+  const handleTokenExpired = useCallback(async () => {
+    logger.warn('🔐 Session expired, logging out user gracefully...');
+    
+    try {
+      // Set user to null and clear state
+      setUser(null);
+      
+      // Disconnect websocket
+      websocketService.leaveAdminRoom();
+      websocketService.disconnect();
+      
+      // Clear all cached queries
+      queryClient.clear();
+      
+      // Navigate to login page
+      navigate('/login', { 
+        replace: true,
+        state: { 
+          message: 'Your session has expired. Please log in again.',
+          type: 'info'
+        }
+      });
+      
+      logger.log('✅ User logged out due to session expiry');
+    } catch (error) {
+      logger.error('❌ Error during token expiry logout:', error);
+      // Force redirect as fallback
+      window.location.href = '/login';
+    }
+  }, [navigate, queryClient]);
+
   useEffect(() => {
+    // Register token expiry callback with API service
+    apiService.setOnTokenExpiredCallback(handleTokenExpired);
+    
     // Check if user is already logged in
     const initAuth = async () => {
       try {
         const token = apiService.getToken();
         if (token) {
+          logger.log('🔑 Found existing token, verifying...');
+          // Verify token is still valid by getting current user
           const currentUser = await apiService.getCurrentUser();
+          logger.log('✅ Token verified, user authenticated:', currentUser.username);
           setUser(currentUser);
           // Join admin room for real-time updates
           websocketService.joinAdminRoom();
+          // Invalidate all queries to refresh data with authenticated user
+          queryClient.invalidateQueries();
+        } else {
+          logger.log('❌ No token found');
         }
       } catch (error) {
-        console.error('Failed to initialize auth:', error);
+        logger.error('❌ Failed to initialize auth:', error);
+        // Token is invalid or expired
         apiService.clearToken();
+        setUser(null);
+        // Clear all cached queries
+        queryClient.clear();
       } finally {
         setIsLoading(false);
       }
     };
 
     initAuth();
-  }, []);
+  }, [queryClient, handleTokenExpired]);
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     try {
       setIsLoading(true);
+      logger.log('🔐 Attempting login with:', { username: credentials.username });
+      
       const response: AuthResponse = await apiService.login(credentials);
+      logger.log('✅ Login successful:', { user: response.user.username, role: response.user.role });
+      
       setUser(response.user);
       
       // Join admin room for real-time updates
       websocketService.joinAdminRoom();
+      
+      // Invalidate all queries to refresh data with new authenticated user
+      queryClient.invalidateQueries();
+      logger.log('🔄 Queries invalidated for fresh data');
+      
+      logger.log('🎯 User authenticated, redirecting to dashboard...');
     } catch (error) {
-      console.error('Login failed:', error);
+      logger.error('❌ Login failed:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -99,11 +160,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       await apiService.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
     } finally {
       setUser(null);
       websocketService.leaveAdminRoom();
       websocketService.disconnect();
+      // Clear all cached queries on logout
+      queryClient.clear();
       setIsLoading(false);
     }
   };
@@ -165,5 +228,8 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+// Export alias for compatibility
+export const useAuthContext = useAuth;
 
 export default AuthContext;
