@@ -531,8 +531,10 @@ class MainActivity : AppCompatActivity() {
     // Send command result back to server
     private fun sendCommandResult(commandId: String, success: Boolean, result: Any? = null, error: String? = null) {
         if (mdmService.isWebSocketConnected()) {
+            val deviceId = PreferenceManager.getInstance(this).getDeviceId()
             val resultData = mapOf(
                 "type" to "command_result",
+                "deviceId" to deviceId,
                 "commandId" to commandId,
                 "success" to success,
                 "result" to result,

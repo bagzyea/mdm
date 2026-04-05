@@ -93,7 +93,7 @@ model RemoteCommand {
   parameters      Json?
   status          CommandStatus @default(PENDING)
   result          Json?
-  device          Device   @relation(fields: [deviceId], references: [id])
+  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -107,7 +107,7 @@ model DeviceEvent {
   deviceId        String
   eventType       String
   eventData       Json?
-  device          Device   @relation(fields: [deviceId], references: [id])
+  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
 
   @@index([createdAt])          // timeline / audit queries

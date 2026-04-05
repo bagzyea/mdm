@@ -31,6 +31,9 @@ import {
   Divider,
   Fab,
   TablePagination,
+  Checkbox,
+  FormGroup,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Smartphone,
@@ -93,7 +96,11 @@ const DevicesPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [dialogType, setDialogType] = useState<'enroll' | 'details' | 'assign' | null>(null);
+  const [dialogType, setDialogType] = useState<'enroll' | 'details' | 'assign' | 'sendCommand' | null>(null);
+  const [commandType, setCommandType] = useState<string>('LOCK_DEVICE');
+  const [commandParams, setCommandParams] = useState<any>({});
+  const [policies, setPolicies] = useState<any[]>([]);
+  const [selectedPolicies, setSelectedPolicies] = useState<string[]>([]);
   const [tabValue, setTabValue] = useState(0);
   const [enrollmentCode, setEnrollmentCode] = useState('');
   const [page, setPage] = useState(0);
@@ -211,36 +218,36 @@ const DevicesPage: React.FC = () => {
     setSelectedDevice(null);
   };
 
-  const handleDeviceAction = async (action: string, deviceId: string) => {
+  const handleDeviceAction = async (action: string, device: Device) => {
     try {
-      console.log(`🔄 Executing ${action} command for device:`, deviceId);
+      console.log(`🔄 Executing ${action} command for device:`, device.deviceId);
       
       switch (action) {
         case 'lock':
-          await apiService.sendCommand(deviceId, 'LOCK_DEVICE', { 
+          await apiService.sendCommand(device.id, 'LOCK_DEVICE', { 
             message: 'Device locked by administrator',
             timeout: 300 
           });
           break;
         case 'unlock':
-          await apiService.sendCommand(deviceId, 'UNLOCK_DEVICE', {});
+          await apiService.sendCommand(device.id, 'UNLOCK_DEVICE', {});
           break;
         case 'wipe':
           if (window.confirm('Are you sure you want to wipe this device? This action cannot be undone.')) {
-            await apiService.sendCommand(deviceId, 'WIPE_DEVICE', {});
+            await apiService.sendCommand(device.id, 'WIPE_DEVICE', {});
           } else {
             return; // User cancelled
           }
           break;
         case 'suspend':
-          await apiService.updateDeviceStatus(deviceId, 'SUSPENDED');
+          await apiService.updateDeviceStatus(device.deviceId, 'SUSPENDED');
           break;
         case 'activate':
-          await apiService.updateDeviceStatus(deviceId, 'ACTIVE');
+          await apiService.updateDeviceStatus(device.deviceId, 'ACTIVE');
           break;
         case 'delete':
           if (window.confirm('Are you sure you want to delete this device from the MDM? This action cannot be undone.')) {
-            await apiService.deleteDevice(deviceId);
+            await apiService.deleteDevice(device.deviceId);
           } else {
             return; // User cancelled
           }
@@ -266,13 +273,23 @@ const DevicesPage: React.FC = () => {
     }
   };
 
-  const handleOpenDialog = (type: 'enroll' | 'details' | 'assign', device?: Device) => {
+  const handleOpenDialog = async (type: 'enroll' | 'details' | 'assign' | 'sendCommand', device?: Device) => {
     setDialogType(type);
     setSelectedDevice(device || null);
     setOpenDialog(true);
-    
+
     if (type === 'enroll') {
       generateEnrollmentCode();
+    } else if (type === 'assign') {
+      // Fetch available policies
+      try {
+        const response = await apiService.getPolicies({ limit: 100 });
+        setPolicies(response.data || []);
+        setSelectedPolicies([]);
+      } catch (err) {
+        console.error('Failed to fetch policies:', err);
+        setError('Failed to fetch policies');
+      }
     }
   };
 
@@ -325,7 +342,7 @@ const DevicesPage: React.FC = () => {
     return `${diffDays}d ago`;
   };
 
-  const canManageDevices = hasPermission('devices', 'manage');
+  const canManageDevices = hasPermission('devices', 'create') || hasPermission('devices', 'update');
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
@@ -625,35 +642,42 @@ const DevicesPage: React.FC = () => {
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
+        disableAutoFocus
       >
-        <MenuItem onClick={() => handleDeviceAction('lock', selectedDevice?.id || '')}>
+        <MenuItem onClick={() => selectedDevice && handleDeviceAction('lock', selectedDevice)}>
           <Lock sx={{ mr: 1 }} /> Lock Device
         </MenuItem>
-        <MenuItem onClick={() => handleDeviceAction('unlock', selectedDevice?.id || '')}>
+        <MenuItem onClick={() => selectedDevice && handleDeviceAction('unlock', selectedDevice)}>
           <LockOpen sx={{ mr: 1 }} /> Unlock Device
         </MenuItem>
-        <MenuItem onClick={() => handleOpenDialog('assign', selectedDevice || undefined)}>
+        <MenuItem onClick={() => {
+          handleMenuClose();
+          handleOpenDialog('assign', selectedDevice || undefined);
+        }}>
           <Policy sx={{ mr: 1 }} /> Assign Policies
         </MenuItem>
-        <MenuItem onClick={() => console.log('Send command to:', selectedDevice?.id)}>
+        <MenuItem onClick={() => {
+          handleMenuClose();
+          handleOpenDialog('sendCommand', selectedDevice || undefined);
+        }}>
           <Terminal sx={{ mr: 1 }} /> Send Command
         </MenuItem>
         <Divider />
-        <MenuItem onClick={() => handleDeviceAction('suspend', selectedDevice?.id || '')}>
+        <MenuItem onClick={() => selectedDevice && handleDeviceAction('suspend', selectedDevice)}>
           <Block sx={{ mr: 1 }} /> Suspend Device
         </MenuItem>
-        <MenuItem onClick={() => handleDeviceAction('activate', selectedDevice?.id || '')}>
+        <MenuItem onClick={() => selectedDevice && handleDeviceAction('activate', selectedDevice)}>
           <LockOpen sx={{ mr: 1 }} /> Activate Device
         </MenuItem>
         <Divider />
         <MenuItem
-          onClick={() => handleDeviceAction('wipe', selectedDevice?.id || '')}
+          onClick={() => selectedDevice && handleDeviceAction('wipe', selectedDevice)}
           sx={{ color: 'warning.main' }}
         >
           <DeleteForever sx={{ mr: 1 }} /> Wipe Device
         </MenuItem>
         <MenuItem
-          onClick={() => handleDeviceAction('delete', selectedDevice?.id || '')}
+          onClick={() => selectedDevice && handleDeviceAction('delete', selectedDevice)}
           sx={{ color: 'error.main' }}
         >
           <DeleteForever sx={{ mr: 1 }} /> Delete from MDM
@@ -738,6 +762,126 @@ const DevicesPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Send Command Dialog */}
+      <Dialog open={openDialog && dialogType === 'sendCommand'} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Send Command to Device</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              select
+              fullWidth
+              label="Command Type"
+              value={commandType}
+              onChange={(e) => setCommandType(e.target.value)}
+            >
+              <MenuItem value="LOCK_DEVICE">Lock Device</MenuItem>
+              <MenuItem value="UNLOCK_DEVICE">Unlock Device</MenuItem>
+              <MenuItem value="GET_DEVICE_INFO">Get Device Info</MenuItem>
+              <MenuItem value="LOCATE_DEVICE">Locate Device</MenuItem>
+              <MenuItem value="SYNC_SETTINGS">Sync Settings</MenuItem>
+            </TextField>
+            {commandType === 'LOCK_DEVICE' && (
+              <TextField
+                fullWidth
+                label="Lock Message"
+                value={commandParams.message || ''}
+                onChange={(e) => setCommandParams({ ...commandParams, message: e.target.value })}
+                placeholder="Device locked by administrator"
+              />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (selectedDevice) {
+                try {
+                  await apiService.sendCommand(selectedDevice.id, commandType as any, commandParams);
+                  setError(null);
+                  handleCloseDialog();
+                  await fetchDevices();
+                } catch (err: any) {
+                  setError(err.response?.data?.message || 'Failed to send command');
+                }
+              }
+            }}
+            variant="contained"
+          >
+            Send Command
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Policies Dialog */}
+      <Dialog open={openDialog && dialogType === 'assign'} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Assign Policies to Device</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            {selectedDevice && (
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                Assign policies to: <strong>{selectedDevice.deviceName}</strong>
+              </Typography>
+            )}
+            {policies.length > 0 ? (
+              <FormGroup>
+                {policies.map((policy) => (
+                  <FormControlLabel
+                    key={policy.id}
+                    control={
+                      <Checkbox
+                        checked={selectedPolicies.includes(policy.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPolicies([...selectedPolicies, policy.id]);
+                          } else {
+                            setSelectedPolicies(selectedPolicies.filter(id => id !== policy.id));
+                          }
+                        }}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2">{policy.name}</Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {policy.description || 'No description'}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                ))}
+              </FormGroup>
+            ) : (
+              <Typography color="textSecondary">No policies available</Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (selectedDevice && selectedPolicies.length > 0) {
+                try {
+                  // Apply each selected policy to the device
+                  for (const policyId of selectedPolicies) {
+                    await apiService.applyPolicyToDevices(policyId, [selectedDevice.id]);
+                  }
+                  setError(null);
+                  handleCloseDialog();
+                  await fetchDevices();
+                } catch (err: any) {
+                  setError(err.response?.data?.message || 'Failed to assign policies');
+                }
+              }
+            }}
+            variant="contained"
+            disabled={selectedPolicies.length === 0}
+          >
+            Assign Policies ({selectedPolicies.length})
+          </Button>
         </DialogActions>
       </Dialog>
 

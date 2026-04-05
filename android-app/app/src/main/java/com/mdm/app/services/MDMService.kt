@@ -74,23 +74,50 @@ class MDMService(private val context: Context) {
                 scheduleReconnection()
             }
         }
+
+        // Start periodic connection monitor (check every 30 seconds if still connected)
+        scope.launch {
+            while (isActive) {
+                delay(30000) // Check every 30 seconds
+
+                try {
+                    if (!webSocketClient.isConnected()) {
+                        Log.w(TAG, "WebSocket connection lost, attempting to reconnect...")
+                        val serverUrl = preferenceManager.getServerUrl() ?: "http://10.0.2.2:5001"
+                        val deviceToken = preferenceManager.getDeviceToken()
+
+                        if (!deviceToken.isNullOrEmpty()) {
+                            webSocketClient.connect(serverUrl, deviceToken)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Connection monitor error", e)
+                }
+            }
+        }
     }
     
     private fun initializeWebSocket() {
-        val serverUrl = preferenceManager.getServerUrl()
         val deviceToken = preferenceManager.getDeviceToken()
-        
+
+        // In debug/emulator builds, always use the local development server
+        val serverUrl = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ||
+                           context.packageName.endsWith(".debug")) {
+            Log.d(TAG, "Debug build detected, using emulator server URL")
+            "http://10.0.2.2:5001"
+        } else {
+            preferenceManager.getServerUrl() ?: "http://10.0.2.2:5001"
+        }
+
+        Log.d(TAG, "initializeWebSocket: serverUrl=$serverUrl, hasToken=${!deviceToken.isNullOrEmpty()}")
+
         if (!serverUrl.isNullOrEmpty() && !deviceToken.isNullOrEmpty()) {
             webSocketClient.connect(serverUrl, deviceToken)
         } else {
-            Log.w(TAG, "Cannot initialize WebSocket: missing server URL or device token")
-            if (serverUrl.isNullOrEmpty()) {
-                Log.w(TAG, "Server URL is empty, using fallback URL")
-                // Try with fallback server URL for emulator
-                val fallbackUrl = "http://10.0.2.2:5000"
-                if (!deviceToken.isNullOrEmpty()) {
-                    webSocketClient.connect(fallbackUrl, deviceToken)
-                }
+            Log.w(TAG, "Cannot initialize WebSocket: missing device token or server URL")
+            if (!deviceToken.isNullOrEmpty()) {
+                // Try with the determined server URL anyway
+                webSocketClient.connect(serverUrl, deviceToken)
             }
         }
     }

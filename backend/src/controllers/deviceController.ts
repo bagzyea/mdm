@@ -379,7 +379,7 @@ export const updateDeviceStatus = async (req: Request, res: Response) => {
       data: {
         deviceId: device.id,
         eventType: 'HEARTBEAT',
-        eventData: { 
+        eventData: {
           batteryLevel,
           isCharging,
           location: location ? { lat: location.latitude, lng: location.longitude } : null,
@@ -387,8 +387,17 @@ export const updateDeviceStatus = async (req: Request, res: Response) => {
         }
       }
     });
-    
-    res.json({ success: true, device, message: 'Heartbeat received successfully' });
+
+    // Convert BigInt values to strings for JSON serialization
+    const deviceResponse = {
+      ...device,
+      totalStorage: device.totalStorage ? device.totalStorage.toString() : null,
+      availableStorage: device.availableStorage ? device.availableStorage.toString() : null,
+      totalRAM: device.totalRAM ? device.totalRAM.toString() : null,
+      availableRAM: device.availableRAM ? device.availableRAM.toString() : null,
+    };
+
+    res.json({ success: true, device: deviceResponse, message: 'Heartbeat received successfully' });
   } catch (error) {
     console.error('Error updating device status:', error);
     res.status(500).json({ error: 'Failed to update device status' });

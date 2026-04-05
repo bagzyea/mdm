@@ -29,8 +29,10 @@ class HeartbeatWorker(
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val heartbeatRequest = PeriodicWorkRequestBuilder<HeartbeatWorker>(1, TimeUnit.HOURS)
+            // Schedule heartbeat every 4 minutes (before 5 minute inactivity timeout)
+            val heartbeatRequest = PeriodicWorkRequestBuilder<HeartbeatWorker>(4, TimeUnit.MINUTES)
                 .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
                 .addTag("mdm_heartbeat")
                 .build()
 
@@ -39,7 +41,7 @@ class HeartbeatWorker(
                 ExistingPeriodicWorkPolicy.KEEP,
                 heartbeatRequest
             )
-            Log.i(TAG, "Periodic heartbeat work scheduled (1 hour interval)")
+            Log.i(TAG, "Periodic heartbeat work scheduled (4 minute interval)")
         }
 
         fun cancelHeartbeat(context: Context) {

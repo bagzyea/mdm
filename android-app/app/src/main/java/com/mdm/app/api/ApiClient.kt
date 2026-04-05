@@ -59,8 +59,12 @@ class ApiClient private constructor(private val context: Context) {
     private val okHttpClient = createSecureOkHttpClient()
     
     private val retrofit: Retrofit by lazy {
-        // Use hardcoded server URL from AppConfig - NO USER OVERRIDE ALLOWED
-        val baseUrl = AppConfig.Server.BASE_API_URL + "/api/"
+        // Use emulator URL for debug builds, production URL for release builds
+        val baseUrl = if (AppConfig.Development.ENABLE_DEBUG_LOGGING) {
+            AppConfig.Server.BASE_API_URL_EMULATOR + "/api/"
+        } else {
+            AppConfig.Server.BASE_API_URL + "/api/"
+        }
 
         Retrofit.Builder()
             .baseUrl(baseUrl)

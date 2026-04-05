@@ -142,13 +142,13 @@ app.use('/api/apk-registry',
 );
 
 // Import command service
-import { CommandService } from './services/commandService';
+import { initializeCommandService } from './services/commandServiceInstance';
 
 // Import notification service for email alerts (2.6)
 import { notificationService } from './services/notificationService';
 
 // Initialize command service
-const commandService = new CommandService(io);
+const commandService = initializeCommandService(io);
 
 // Start command queue processor (runs every 30 seconds)
 setInterval(() => {
@@ -230,7 +230,19 @@ setInterval(async () => {
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
+  console.log('[SOCKET] New connection:', socket.id);
   logger.info({ socketId: socket.id }, 'Socket connected');
+
+  // Catch-all handler for custom events (handles deviceIdentify and other custom events)
+  socket.onAny((event: string, ...args: any[]) => {
+    console.log('[SOCKET] onAny event:', event, 'from socket:', socket.id);
+    if (event === 'deviceIdentify') {
+      console.log('[SOCKET] deviceIdentify caught by onAny, will be handled by specific listener');
+      // This will be handled by the deviceIdentify listener below
+      return;
+    }
+    logger.debug({ event, args }, 'Received custom event');
+  });
 
   // --- Admin dashboard authentication (Fix 1.4) ---
   // Dashboard clients call adminConnect with their JWT to join the admins room
@@ -260,14 +272,19 @@ io.on('connection', (socket) => {
 
   // Device identification — authenticated (Fix 1.2)
   socket.on('deviceIdentify', async (data: { deviceId: string; token: string } | string) => {
+    console.log('[DEBUG] deviceIdentify event received:', JSON.stringify(data).substring(0, 100));
+
     // Support both old string format and new object format gracefully
     const deviceId = typeof data === 'string' ? data : data?.deviceId;
     const token = typeof data === 'object' ? data?.token : null;
 
     if (!deviceId) {
+      console.log('[DEBUG] deviceIdentify: deviceId is missing');
       socket.emit('identifyError', { message: 'deviceId required' });
       return;
     }
+
+    console.log('[DEBUG] deviceIdentify: deviceId =', deviceId);
 
     // Verify device token if provided
     if (token) {
@@ -324,8 +341,68 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Generic message handler (for heartbeats and other messages from devices)
+  socket.on('message', async (data: any) => {
+    console.log('[MESSAGE] Received generic message from socket:', socket.id);
+    try {
+      const messageData = typeof data === 'string' ? JSON.parse(data) : data;
+      console.log('[MESSAGE] Parsed data type:', messageData.type, 'deviceId:', messageData.deviceId);
+
+      if (messageData.type === 'heartbeat') {
+        console.log('[MESSAGE] Processing as heartbeat');
+        // Convert message format to deviceHeartbeat format
+        const heartbeatData: DeviceHeartbeatData = {
+          deviceId: messageData.deviceId,
+          batteryLevel: messageData.batteryLevel,
+          isCharging: messageData.isCharging,
+          location: messageData.location,
+          timestamp: messageData.timestamp
+        };
+        // Continue processing as heartbeat (see deviceHeartbeat handler below)
+        const updateData: Record<string, unknown> = {
+          lastSeen: new Date(),
+          status: 'ACTIVE'
+        };
+        if (heartbeatData.batteryLevel !== undefined) updateData.batteryLevel = heartbeatData.batteryLevel;
+        if (heartbeatData.isCharging !== undefined) updateData.isCharging = heartbeatData.isCharging;
+        if (heartbeatData.location) updateData.location = heartbeatData.location;
+
+        const device = await prisma.device.update({
+          where: { deviceId: heartbeatData.deviceId },
+          data: updateData as any
+        });
+
+        console.log('[MESSAGE] Updated device:', device.deviceId, 'to ACTIVE');
+        io.to('admins').emit('deviceHeartbeat', {
+          deviceId: heartbeatData.deviceId,
+          batteryLevel: heartbeatData.batteryLevel,
+          isCharging: heartbeatData.isCharging,
+          location: heartbeatData.location,
+          lastSeen: new Date(),
+          status: 'ACTIVE'
+        });
+      } else if (messageData.type === 'command_result') {
+        console.log('[MESSAGE] Processing command result for deviceId:', messageData.deviceId);
+        // Handle command result from device
+        await commandService.handleCommandResponse(
+          messageData.deviceId,
+          messageData.commandId,
+          {
+            success: messageData.success,
+            result: messageData.result,
+            error: messageData.error,
+            timestamp: new Date()
+          }
+        );
+      }
+    } catch (error) {
+      console.error('[MESSAGE] Error processing message:', error);
+    }
+  });
+
   // Device heartbeat
   socket.on('deviceHeartbeat', async (data: DeviceHeartbeatData) => {
+    console.log('[HEARTBEAT] Received from socket:', socket.id, 'data:', JSON.stringify(data).substring(0, 100));
     try {
       const updateData: Record<string, unknown> = {
         lastSeen: new Date(),

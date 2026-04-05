@@ -21,10 +21,10 @@ object AppConfig {
         // Base API URL - HARDCODED, IMMUTABLE
         // DO NOT allow users to change this - security risk
         const val BASE_API_URL = "https://mdm.uboscare.com"  // Production
-        const val BASE_API_URL_FALLBACK = "https://mdm-dev.uboscare.com" // Development
+        const val BASE_API_URL_FALLBACK = "http://10.0.2.2:5001" // Emulator/Development
 
         // For development/emulator testing only
-        const val BASE_API_URL_EMULATOR = "http://10.0.2.2:5000"
+        const val BASE_API_URL_EMULATOR = "http://10.0.2.2:5001"
 
         // Certificate pinning enabled - prevents MITM attacks
         const val CERTIFICATE_PINNING_ENABLED = true

@@ -59,7 +59,16 @@
       "Bash([ -f .env ])",
       "Bash(npx ts-node -e ':*)",
       "Bash(gradle assembleDebug)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(adb devices:*)",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell am force-stop com.mdm.app.debug)",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell cmd package resolve-activity --brief com.mdm.app.debug)",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell am start com.mdm.app.debug/com.mdm.app.MainActivity)",
+      "Bash(ls -lh c:/code/MDM/android-app/app/build/outputs/apk/debug/*.apk)",
+      "Read(//c/code/MDM/**)",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 install -r c:/code/MDM/android-app/app/build/outputs/apk/debug/app-debug.apk)",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 logcat -d \"*:E\")",
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell pm clear com.mdm.app.debug)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

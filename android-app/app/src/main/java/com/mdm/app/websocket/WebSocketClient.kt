@@ -5,11 +5,12 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.mdm.app.utils.PreferenceManager
+import io.socket.client.IO
+import io.socket.client.Socket
+import io.socket.emitter.Emitter
 import kotlinx.coroutines.*
-import okhttp3.*
-import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
+import java.net.URISyntaxException
 
 /**
  * Callback interface so MainActivity (or any host) can receive server-originated commands
@@ -20,18 +21,11 @@ interface CommandListener {
 }
 
 class WebSocketClient private constructor(private val context: Context) {
-    
+
     companion object {
         private const val TAG = "WebSocketClient"
-        private const val CONNECTION_TIMEOUT = 30L
-        private const val READ_TIMEOUT = 30L
-        private const val WRITE_TIMEOUT = 30L
-        private const val PING_INTERVAL = 30L
-
-        // Exponential backoff configuration
-        private const val INITIAL_BACKOFF_MS = 1000L  // 1 second
-        private const val MAX_BACKOFF_MS = 60000L     // 60 seconds
-        private const val BACKOFF_MULTIPLIER = 2.0
+        private const val RECONNECT_DELAY = 3000L // 3 seconds (more aggressive)
+        private const val MAX_RECONNECT_ATTEMPTS = 20 // More attempts
 
         @Volatile
         private var INSTANCE: WebSocketClient? = null
@@ -43,68 +37,75 @@ class WebSocketClient private constructor(private val context: Context) {
         }
     }
 
-    private var webSocket: WebSocket? = null
+    private var socket: Socket? = null
     private var commandListener: CommandListener? = null
 
     /** Register the listener that will handle server-sent commands (e.g. MainActivity). */
     fun setCommandListener(listener: CommandListener?) {
         commandListener = listener
     }
+
     private var isConnecting = false
     private var reconnectAttempts = 0
-    private val maxReconnectAttempts = 10
-    
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-        .readTimeout(READ_TIMEOUT, TimeUnit.SECONDS)
-        .writeTimeout(WRITE_TIMEOUT, TimeUnit.SECONDS)
-        .pingInterval(PING_INTERVAL, TimeUnit.SECONDS)
-        .addInterceptor(HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
-        })
-        .build()
-    
+
     // LiveData for reactive UI updates
     private val _connectionStatus = MutableLiveData<Boolean>(false)
     val connectionStatus: LiveData<Boolean> = _connectionStatus
-    
+
     private val _lastMessage = MutableLiveData<String>("")
     val lastMessage: LiveData<String> = _lastMessage
-    
+
     private val _connectionError = MutableLiveData<String?>(null)
     val connectionError: LiveData<String?> = _connectionError
-    
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
+
     fun connect(serverUrl: String, deviceToken: String) {
         if (isConnecting || isConnected()) {
             Log.d(TAG, "Already connecting or connected")
             return
         }
-        
+
         isConnecting = true
         _connectionError.postValue(null)
-        
+
         try {
             // Clean and validate server URL
             val cleanServerUrl = serverUrl.trim().trimEnd('/')
             if (cleanServerUrl.isEmpty() || (!cleanServerUrl.startsWith("http://") && !cleanServerUrl.startsWith("https://"))) {
                 throw IllegalArgumentException("Invalid server URL: $cleanServerUrl")
             }
-            
-            // Build WebSocket URL
-            val wsUrl = cleanServerUrl.replace("http://", "ws://").replace("https://", "wss://") + "/ws?token=$deviceToken"
-            Log.d(TAG, "Connecting to WebSocket: $wsUrl")
-            
-            val request = Request.Builder()
-                .url(wsUrl)
-                .addHeader("Authorization", "Bearer $deviceToken")
-                .addHeader("User-Agent", "UBOS-MDM-Android")
-                .addHeader("X-Device-Type", "android")
-                .build()
-            
-            webSocket = client.newWebSocket(request, createWebSocketListener())
-            
+
+            Log.d(TAG, "Connecting to Socket.IO: $cleanServerUrl")
+
+            // Configure Socket.IO client options
+            val opts = IO.Options()
+            opts.reconnection = true
+            opts.reconnectionDelay = RECONNECT_DELAY
+            opts.reconnectionAttempts = MAX_RECONNECT_ATTEMPTS
+            opts.transports = arrayOf("websocket", "polling")
+            opts.auth = mapOf(
+                "token" to deviceToken,
+                "deviceToken" to deviceToken
+            )
+
+            socket = IO.socket(cleanServerUrl, opts)
+
+            // Set up event listeners
+            socket!!.on(Socket.EVENT_CONNECT) { onConnect() }
+            socket!!.on(Socket.EVENT_DISCONNECT) { onDisconnect() }
+            socket!!.on(Socket.EVENT_CONNECT_ERROR) { args -> onConnectError(args) }
+            socket!!.on("executeCommand") { args -> onExecuteCommand(args) }
+            socket!!.on("authError") { args -> onAuthError(args) }
+
+            // Connect
+            socket!!.connect()
+
+        } catch (e: URISyntaxException) {
+            Log.e(TAG, "Invalid socket URL", e)
+            _connectionError.postValue("Invalid server URL: ${e.message}")
+            isConnecting = false
+            _connectionStatus.postValue(false)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create WebSocket connection", e)
             _connectionError.postValue("Connection failed: ${e.message}")
@@ -112,25 +113,110 @@ class WebSocketClient private constructor(private val context: Context) {
             _connectionStatus.postValue(false)
         }
     }
-    
-    fun disconnect() {
-        Log.d(TAG, "Disconnecting WebSocket")
+
+    private fun onConnect() {
+        Log.d(TAG, "Socket.IO connected successfully")
         isConnecting = false
-        webSocket?.close(1000, "Normal closure")
-        webSocket = null
+        reconnectAttempts = 0
+        _connectionStatus.postValue(true)
+        _connectionError.postValue(null)
+
+        // Send device identification to the server
+        val prefs = PreferenceManager.getInstance(context)
+        val deviceId = prefs.getDeviceId()
+        val token = prefs.getDeviceToken()
+
+        Log.d(TAG, "onConnect: deviceId=$deviceId, hasToken=${!token.isNullOrEmpty()}")
+
+        if (!deviceId.isNullOrEmpty()) {
+            try {
+                Log.d(TAG, "Emitting deviceIdentify event with deviceId: $deviceId and token")
+                val identifyData = JSONObject().apply {
+                    put("deviceId", deviceId)
+                    put("token", token ?: "")
+                }
+                Log.d(TAG, "deviceIdentify payload: $identifyData")
+                socket?.emit("deviceIdentify", identifyData)
+                Log.d(TAG, "deviceIdentify event emitted successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to emit deviceIdentify event", e)
+            }
+        } else {
+            Log.w(TAG, "Cannot send deviceIdentify: deviceId is empty")
+        }
+    }
+
+    private fun onDisconnect() {
+        Log.d(TAG, "Socket.IO disconnected")
+        isConnecting = false
         _connectionStatus.postValue(false)
+        scheduleReconnection()
     }
-    
-    fun isConnected(): Boolean {
-        return webSocket != null && _connectionStatus.value == true
+
+    private fun onConnectError(args: Array<*>) {
+        val error = args.getOrNull(0)
+        Log.e(TAG, "Socket.IO connection error: $error")
+        isConnecting = false
+        _connectionStatus.postValue(false)
+        _connectionError.postValue("Connection error: $error")
+        scheduleReconnection()
     }
-    
-    fun sendMessage(message: Map<String, Any?>) {
-        if (!isConnected()) {
-            Log.w(TAG, "Cannot send message: WebSocket not connected")
+
+    private fun onAuthError(args: Array<*>) {
+        val error = args.getOrNull(0)
+        Log.e(TAG, "Socket.IO authentication error: $error")
+        _connectionError.postValue("Authentication error: $error")
+    }
+
+    private fun onExecuteCommand(args: Array<*>) {
+        if (args.isEmpty()) {
+            Log.w(TAG, "Received executeCommand with no data")
             return
         }
-        
+
+        try {
+            val data = args[0]
+            val commandJson = when (data) {
+                is JSONObject -> data
+                is String -> JSONObject(data)
+                else -> JSONObject(data.toString())
+            }
+
+            Log.d(TAG, "Received command: $commandJson")
+            _lastMessage.postValue(commandJson.toString())
+
+            // Forward to registered listener
+            val listener = commandListener
+            if (listener != null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    listener.onServerCommand(commandJson)
+                }
+            } else {
+                Log.w(TAG, "No CommandListener registered")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling executeCommand", e)
+        }
+    }
+
+    fun disconnect() {
+        Log.d(TAG, "Disconnecting Socket.IO")
+        isConnecting = false
+        socket?.disconnect()
+        socket = null
+        _connectionStatus.postValue(false)
+    }
+
+    fun isConnected(): Boolean {
+        return socket?.connected() ?: false
+    }
+
+    fun sendMessage(message: Map<String, Any?>) {
+        if (!isConnected()) {
+            Log.w(TAG, "Cannot send message: Socket.IO not connected")
+            return
+        }
+
         try {
             val jsonObj = JSONObject()
             message.forEach { (key, value) ->
@@ -142,303 +228,62 @@ class WebSocketClient private constructor(private val context: Context) {
             }
             val jsonMessage = jsonObj.toString()
             Log.d(TAG, "Sending message: $jsonMessage")
-            
-            val success = webSocket?.send(jsonMessage) ?: false
-            if (!success) {
-                Log.e(TAG, "Failed to send message")
-                _connectionError.postValue("Failed to send message")
-            }
-            
+
+            socket?.emit("message", jsonMessage)
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message", e)
             _connectionError.postValue("Error sending message: ${e.message}")
         }
     }
-    
+
     fun sendMessage(message: String) {
         if (!isConnected()) {
-            Log.w(TAG, "Cannot send message: WebSocket not connected")
+            Log.w(TAG, "Cannot send message: Socket.IO not connected")
             return
         }
-        
+
         try {
             Log.d(TAG, "Sending message: $message")
-            
-            val success = webSocket?.send(message) ?: false
-            if (!success) {
-                Log.e(TAG, "Failed to send message")
-                _connectionError.postValue("Failed to send message")
-            }
-            
+            socket?.emit("message", message)
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message", e)
             _connectionError.postValue("Error sending message: ${e.message}")
         }
     }
-    
-    private fun createWebSocketListener(): WebSocketListener {
-        return object : WebSocketListener() {
-            
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connection opened")
-                isConnecting = false
-                reconnectAttempts = 0
-                _connectionStatus.postValue(true)
-                _connectionError.postValue(null)
 
-                // Authenticate the device socket by sending deviceIdentify with token (Fix 1.2)
-                val prefs = PreferenceManager.getInstance(context)
-                val deviceId = prefs.getDeviceId()
-                val token = prefs.getDeviceToken()
-                if (!deviceId.isNullOrEmpty()) {
-                    val identifyMsg = mapOf(
-                        "type" to "deviceIdentify",
-                        "deviceId" to deviceId,
-                        "token" to (token ?: "")
-                    )
-                    sendMessage(identifyMsg)
-                }
-            }
-            
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.d(TAG, "Received message: $text")
-                _lastMessage.postValue(text)
-                
-                try {
-                    handleIncomingMessage(text)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error handling incoming message", e)
-                }
-            }
-            
-            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
-                Log.d(TAG, "Received binary message: ${bytes.size} bytes")
-                // Handle binary messages if needed
-            }
-            
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closing: $code - $reason")
-                _connectionStatus.postValue(false)
-            }
-            
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: $code - $reason")
-                _connectionStatus.postValue(false)
-                isConnecting = false
-            }
-            
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure", t)
-                isConnecting = false
-                _connectionStatus.postValue(false)
-                _connectionError.postValue("Connection failed: ${t.message}")
-                
-                // Attempt reconnection if not manually disconnected
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    scheduleReconnection()
-                }
-            }
-        }
-    }
-    
-    private fun handleIncomingMessage(message: String) {
-        try {
-            val json = JSONObject(message)
-            val messageType = json.optString("type", "unknown")
-            
-            when (messageType) {
-                "command" -> handleCommand(json)
-                "policy_update" -> handlePolicyUpdate(json)
-                "app_install" -> handleAppInstall(json)
-                "app_uninstall" -> handleAppUninstall(json)
-                "device_lock" -> handleDeviceLock(json)
-                "device_wipe" -> handleDeviceWipe(json)
-                "ping" -> handlePing(json)
-                else -> Log.d(TAG, "Unknown message type: $messageType")
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing incoming message", e)
-        }
-    }
-    
-    private fun handleCommand(json: JSONObject) {
-        // Normalize both "executeCommand" (new shape) and legacy "command" (old shape)
-        val commandId = json.optString("commandId", "")
-        val commandType = json.optString("commandType",
-            json.optString("command", ""))  // fall back to old "command" key
-        val payload = json.optJSONObject("payload")
-            ?: json.optJSONObject("parameters")  // fall back to old "parameters" key
-
-        Log.d(TAG, "Command received: type=$commandType id=$commandId")
-
-        // Acknowledge receipt
-        val ackMessage = mapOf(
-            "type" to "command_ack",
-            "commandId" to commandId,
-            "commandType" to commandType,
-            "status" to "received",
-            "timestamp" to System.currentTimeMillis()
-        )
-        sendMessage(ackMessage)
-
-        // Build a normalized JSONObject and forward to the registered CommandListener
-        val normalizedCommand = JSONObject().apply {
-            put("commandId", commandId)
-            put("commandType", commandType)
-            if (payload != null) put("payload", payload)
-        }
-
-        dispatchToListener(normalizedCommand)
-    }
-    
-    private fun handlePolicyUpdate(json: JSONObject) {
-        val policyId = json.optString("policyId", "")
-        val policyData = json.optString("policyData", "")
-        
-        Log.d(TAG, "Policy update received: $policyId")
-        
-        // Send policy update acknowledgment
-        val ackMessage = mapOf(
-            "type" to "policy_ack",
-            "policyId" to policyId,
-            "status" to "received",
-            "timestamp" to System.currentTimeMillis()
-        )
-        sendMessage(ackMessage)
-        
-        // Apply policy (this would be handled by the policy engine in Phase 3)
-        scope.launch {
-            Log.d(TAG, "Policy apply scheduled for Phase 3 implementation: $policyId")
-            // TODO: Implement in Phase 3: PolicyEngine.applyPolicy(policyId, policyData)
-        }
-    }
-    
-    private fun handleAppInstall(json: JSONObject) {
-        val appId = json.optString("appId", "")
-        val appUrl = json.optString("appUrl", "")
-        
-        Log.d(TAG, "App install command received: $appId")
-        
-        // Send app install acknowledgment
-        val ackMessage = mapOf(
-            "type" to "app_install_ack",
-            "appId" to appId,
-            "status" to "received",
-            "timestamp" to System.currentTimeMillis()
-        )
-        sendMessage(ackMessage)
-        
-        // Install app (this would be handled by the app management service in Phase 3)
-        scope.launch {
-            Log.d(TAG, "App install scheduled for Phase 3 implementation: $appId from $appUrl")
-            // TODO: Implement in Phase 3: AppManagementService.installApp(appId, appUrl)
-        }
-    }
-    
-    private fun handleAppUninstall(json: JSONObject) {
-        val appId = json.optString("appId", "")
-        
-        Log.d(TAG, "App uninstall command received: $appId")
-        
-        // Send app uninstall acknowledgment
-        val ackMessage = mapOf(
-            "type" to "app_uninstall_ack",
-            "appId" to appId,
-            "status" to "received",
-            "timestamp" to System.currentTimeMillis()
-        )
-        sendMessage(ackMessage)
-        
-        // Uninstall app (this would be handled by the app management service in Phase 3)
-        scope.launch {
-            Log.d(TAG, "App uninstall scheduled for Phase 3 implementation: $appId")
-            // TODO: Implement in Phase 3: AppManagementService.uninstallApp(appId)
-        }
-    }
-    
-    /**
-     * Legacy message types "device_lock" and "device_wipe" are now routed through
-     * the unified CommandListener dispatcher so all command execution lives in
-     * MainActivity (Fix 1.1).
-     */
-    private fun handleDeviceLock(json: JSONObject) {
-        Log.d(TAG, "Device lock command received (legacy message type)")
-        val normalized = JSONObject().apply {
-            put("commandId", json.optString("commandId", "legacy_lock_${System.currentTimeMillis()}"))
-            put("commandType", "LOCK_DEVICE")
-            if (json.has("payload")) put("payload", json.getJSONObject("payload"))
-        }
-        dispatchToListener(normalized)
-    }
-
-    private fun handleDeviceWipe(json: JSONObject) {
-        Log.d(TAG, "Device wipe command received (legacy message type)")
-        val normalized = JSONObject().apply {
-            put("commandId", json.optString("commandId", "legacy_wipe_${System.currentTimeMillis()}"))
-            put("commandType", "WIPE_DEVICE")
-            if (json.has("payload")) put("payload", json.getJSONObject("payload"))
-        }
-        dispatchToListener(normalized)
-    }
-
-    /** Shared dispatcher — forwards a normalized command JSONObject to the registered listener. */
-    private fun dispatchToListener(normalized: JSONObject) {
-        val listener = commandListener
-        if (listener != null) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                listener.onServerCommand(normalized)
-            }
-        } else {
-            Log.w(TAG, "No CommandListener registered — command will not be executed")
-        }
-    }
-    
-    private fun handlePing(json: JSONObject) {
-        // Respond to ping with pong
-        val pongMessage = mapOf(
-            "type" to "pong",
-            "timestamp" to System.currentTimeMillis()
-        )
-        sendMessage(pongMessage)
-    }
-    
-    // Note: All command execution logic has been moved to MainActivity via the CommandListener
-    // interface. WebSocketClient is now responsible only for transport — it receives commands
-    // and delivers them to whoever is registered as the CommandListener.
-    
     private fun scheduleReconnection() {
         scope.launch {
             reconnectAttempts++
 
-            // Exponential backoff: initial * multiplier^(attempts-1), capped at MAX
-            val exponentialDelay = (INITIAL_BACKOFF_MS * Math.pow(BACKOFF_MULTIPLIER, (reconnectAttempts - 1).toDouble())).toLong()
-            val delayWithJitter = exponentialDelay.coerceAtMost(MAX_BACKOFF_MS)
+            val delay = (reconnectAttempts * 5000L).coerceAtMost(60000L) // Exponential backoff, max 60 seconds
 
-            // Add ±10% jitter to prevent thundering herd
-            val jitter = (delayWithJitter * 0.1 * (Math.random() * 2 - 1)).toLong()
-            val finalDelay = (delayWithJitter + jitter).coerceAtLeast(1000L) // Minimum 1 second
+            Log.d(TAG, "Scheduling reconnection attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${delay}ms")
+            delay(delay)
 
-            Log.d(TAG, "Scheduling reconnection attempt $reconnectAttempts/$maxReconnectAttempts in ${finalDelay}ms")
-            delay(finalDelay)
-
-            if (reconnectAttempts < maxReconnectAttempts) {
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 val deviceToken = PreferenceManager.getInstance(context).getDeviceToken()
-                val serverUrl = PreferenceManager.getInstance(context).getServerUrl()
+
+                // In debug builds, always use the local development server
+                val serverUrl = if (context.packageName.endsWith(".debug")) {
+                    Log.d(TAG, "Debug build: using emulator server URL for reconnection")
+                    "http://10.0.2.2:5001"
+                } else {
+                    PreferenceManager.getInstance(context).getServerUrl()
+                }
 
                 if (!deviceToken.isNullOrEmpty() && !serverUrl.isNullOrEmpty()) {
-                    Log.d(TAG, "Attempting reconnection $reconnectAttempts/$maxReconnectAttempts")
+                    Log.d(TAG, "Attempting reconnection $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS to $serverUrl")
                     connect(serverUrl, deviceToken)
                 } else {
                     Log.w(TAG, "Cannot reconnect: missing device token or server URL")
                 }
             } else {
-                Log.e(TAG, "Max reconnection attempts ($maxReconnectAttempts) reached")
-                _connectionError.postValue("Failed to reconnect after $maxReconnectAttempts attempts")
+                Log.e(TAG, "Max reconnection attempts ($MAX_RECONNECT_ATTEMPTS) reached")
+                _connectionError.postValue("Failed to reconnect after $MAX_RECONNECT_ATTEMPTS attempts")
             }
         }
     }
-    
+
     fun onDestroy() {
         disconnect()
         scope.cancel()
