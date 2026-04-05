@@ -16,32 +16,32 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/app_request_title"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/holo_blue_dark"
+            android:textAppearance="?attr/textAppearanceHeadlineLarge"
+            android:textColor="?attr/colorPrimary"
             android:layout_marginBottom="24dp"
             android:gravity="center" />
 
         <!-- App Request Form -->
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="24dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="?attr/colorSurface">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="20dp">
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/app_request_app_details"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
+                    android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                    android:textColor="?attr/colorOnSurface"
                     android:layout_marginBottom="16dp" />
 
                 <!-- App Name Input -->
@@ -120,15 +120,15 @@
                 </LinearLayout>
 
                 <!-- Submit Button -->
-                <Button
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/submitButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/app_request_submit"
-                    android:textSize="16sp"
-                    android:padding="12dp"
-                    android:background="@android:color/holo_blue_dark"
-                    android:textColor="@android:color/white" />
+                    android:textAppearance="?attr/textAppearanceLabelLarge"
+                    android:paddingHorizontal="24dp"
+                    android:paddingVertical="12dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
                 <!-- Progress Bar -->
                 <ProgressBar
@@ -151,15 +151,15 @@
 
             </LinearLayout>
 
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Existing Requests Section -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/app_request_existing_requests"
-            android:textSize="20sp"
-            android:textStyle="bold"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="16dp" />
 
         <!-- No Requests Text -->

@@ -18,10 +18,17 @@ object AppConfig {
         }
     
     object Server {
-        // Base API URL - change this to your MDM server URL
-        const val BASE_API_URL = "http://localhost:5000"
-        const val BASE_API_URL_FALLBACK = "http://10.0.2.2:5000" // For Android emulator
-        
+        // Base API URL - HARDCODED, IMMUTABLE
+        // DO NOT allow users to change this - security risk
+        const val BASE_API_URL = "https://mdm.uboscare.com"  // Production
+        const val BASE_API_URL_FALLBACK = "https://mdm-dev.uboscare.com" // Development
+
+        // For development/emulator testing only
+        const val BASE_API_URL_EMULATOR = "http://10.0.2.2:5000"
+
+        // Certificate pinning enabled - prevents MITM attacks
+        const val CERTIFICATE_PINNING_ENABLED = true
+
         // WebSocket endpoint
         const val WEBSOCKET_ENDPOINT = "/ws"
         

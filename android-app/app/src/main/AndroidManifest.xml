@@ -86,7 +86,14 @@
             android:exported="false"
             android:label="Request Application"
             android:parentActivityName=".MainActivity" />
-        
+
+        <!-- Status Activity - Device information display (read-only) -->
+        <activity
+            android:name=".StatusActivity"
+            android:exported="false"
+            android:label="Device Status"
+            android:parentActivityName=".MainActivity" />
+
         <!-- Device Admin Receiver -->
         <receiver
             android:name=".admin.MDMDeviceAdminReceiver"

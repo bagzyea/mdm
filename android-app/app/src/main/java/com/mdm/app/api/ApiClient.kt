@@ -59,27 +59,24 @@ class ApiClient private constructor(private val context: Context) {
     private val okHttpClient = createSecureOkHttpClient()
     
     private val retrofit: Retrofit by lazy {
-        val baseUrl = preferenceManager.getServerUrl() ?: "http://10.0.2.2:5001/api/"
-        
+        // Use hardcoded server URL from AppConfig - NO USER OVERRIDE ALLOWED
+        val baseUrl = AppConfig.Server.BASE_API_URL + "/api/"
+
         Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
-    
+
     val mdmApiService: MDMApiService by lazy {
         retrofit.create(MDMApiService::class.java)
     }
-    
+
     /**
-     * Update server URL and recreate retrofit instance
+     * Get the current server URL (read-only, for display only)
      */
-    fun updateServerUrl(serverUrl: String) {
-        preferenceManager.setServerUrl(serverUrl)
-        // Force recreation of retrofit instance
-        INSTANCE = null
-    }
+    fun getServerUrl(): String = AppConfig.Server.BASE_API_URL
     
     /**
      * Update device token

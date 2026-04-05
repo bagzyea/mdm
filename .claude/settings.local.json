@@ -53,7 +53,13 @@
       "Bash(%PATH%)",
       "Bash(cmd /c:*)",
       "Bash(powershell:*)",
-      "Bash(docker-compose:*)"
+      "Bash(docker-compose:*)",
+      "Bash(npm list:*)",
+      "Bash(npm test:*)",
+      "Bash([ -f .env ])",
+      "Bash(npx ts-node -e ':*)",
+      "Bash(gradle assembleDebug)",
+      "WebSearch"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

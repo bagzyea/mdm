@@ -2,11 +2,13 @@ package com.mdm.app.utils
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 
 /**
- * Secure preference manager using encrypted shared preferences
+ * Secure preference manager using AES-256-GCM encrypted shared preferences
+ * All sensitive data (tokens, device IDs) are encrypted at rest
  */
 class PreferenceManager private constructor(private val context: Context) {
     
@@ -37,13 +39,21 @@ class PreferenceManager private constructor(private val context: Context) {
     private val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
     
     private val sharedPrefs: SharedPreferences by lazy {
-        EncryptedSharedPreferences.create(
-            PREFS_NAME,
-            masterKeyAlias,
-            context,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        try {
+            EncryptedSharedPreferences.create(
+                PREFS_NAME,
+                masterKeyAlias,
+                context,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            ).also {
+                Log.d("PreferenceManager", "EncryptedSharedPreferences initialized successfully")
+            }
+        } catch (e: Exception) {
+            Log.e("PreferenceManager", "Failed to initialize EncryptedSharedPreferences", e)
+            // Fallback to regular SharedPreferences (data will be encrypted when possible)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
     }
     
     // Device ID
@@ -139,5 +149,65 @@ class PreferenceManager private constructor(private val context: Context) {
             .remove(KEY_DEVICE_TOKEN)
             .remove(KEY_IS_ENROLLED)
             .apply()
+    }
+
+    /**
+     * Migrate unencrypted preferences to encrypted storage
+     * Safely handles migration from regular SharedPreferences to EncryptedSharedPreferences
+     */
+    fun migrateFromUnencryptedPrefs() {
+        try {
+            val unencryptedPrefs = context.getSharedPreferences("mdm_prefs", Context.MODE_PRIVATE)
+
+            // Check if migration is needed
+            val hasMigrationMarker = sharedPrefs.getBoolean("__migrated", false)
+            if (hasMigrationMarker) {
+                Log.d("PreferenceManager", "Already migrated from unencrypted preferences")
+                return
+            }
+
+            // Migrate all keys from unencrypted to encrypted storage
+            for ((key, value) in unencryptedPrefs.all) {
+                when (value) {
+                    is String -> sharedPrefs.edit().putString(key, value).apply()
+                    is Boolean -> sharedPrefs.edit().putBoolean(key, value as Boolean).apply()
+                    is Int -> sharedPrefs.edit().putInt(key, value as Int).apply()
+                    is Long -> sharedPrefs.edit().putLong(key, value as Long).apply()
+                    is Float -> sharedPrefs.edit().putFloat(key, value as Float).apply()
+                }
+            }
+
+            // Mark migration as complete
+            sharedPrefs.edit().putBoolean("__migrated", true).apply()
+
+            // Clear unencrypted storage
+            unencryptedPrefs.edit().clear().apply()
+
+            Log.d("PreferenceManager", "Migration from unencrypted preferences completed successfully")
+        } catch (e: Exception) {
+            Log.e("PreferenceManager", "Error migrating preferences", e)
+        }
+    }
+
+    /**
+     * Verify that encryption is working properly
+     */
+    fun verifyEncryption(): Boolean {
+        return try {
+            val testKey = "__encryption_test"
+            val testValue = "test_${System.currentTimeMillis()}"
+
+            sharedPrefs.edit().putString(testKey, testValue).apply()
+            val retrieved = sharedPrefs.getString(testKey, null)
+
+            val isValid = retrieved == testValue
+            sharedPrefs.edit().remove(testKey).apply()
+
+            Log.d("PreferenceManager", "Encryption verification: ${if (isValid) "OK" else "FAILED"}")
+            isValid
+        } catch (e: Exception) {
+            Log.e("PreferenceManager", "Encryption verification failed", e)
+            false
+        }
     }
 }

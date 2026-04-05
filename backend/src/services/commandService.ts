@@ -142,7 +142,7 @@ export class CommandService {
         command: 'LOCK_DEVICE',
         parameters: {
           lockMessage: 'Device locked by administrator',
-          lockPhoneNumber: process.env.ADMIN_PHONE
+          ...(process.env.ADMIN_PHONE ? { lockPhoneNumber: process.env.ADMIN_PHONE } : {})
         },
         priority: 'URGENT'
       },

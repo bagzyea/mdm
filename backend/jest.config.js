@@ -1,28 +1,20 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  testMatch: [
-    '<rootDir>/src/**/__tests__/**/*.{js,ts}',
-    '<rootDir>/src/**/*.{test,spec}.{js,ts}'
-  ],
+  roots: ['<rootDir>/src'],
+  testMatch: ['**/__tests__/**/*.test.ts'],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
-    'src/**/*.{js,ts}',
+    'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/**/__tests__/**',
-    '!src/**/*.test.ts',
-    '!src/**/*.spec.ts'
+    '!src/__tests__/**'
   ],
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
-  clearMocks: true,
-  restoreMocks: true,
-  // Disable strict mode for tests
-  globals: {
-    'ts-jest': {
-      tsconfig: {
-        strict: false,
-        exactOptionalPropertyTypes: false,
-        noImplicitReturns: false
-      }
+  coverageThreshold: {
+    global: {
+      branches: 50,
+      functions: 50,
+      lines: 50,
+      statements: 50
     }
   }
 };

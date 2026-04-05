@@ -24,8 +24,10 @@ import com.mdm.app.services.MDMService
 import com.mdm.app.utils.PreferenceManager
 import com.mdm.app.websocket.CommandListener
 import com.mdm.app.databinding.ActivityMainBinding
+import com.mdm.app.models.DeviceHealthMetrics
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -57,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var preferenceManager: PreferenceManager
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var deviceAdminComponent: ComponentName
+    private var healthMetricsRefreshJob: Job? = null
     
     // UI Components
     private lateinit var statusIndicator: View
@@ -65,9 +68,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverUrlEditText: TextInputEditText
     private lateinit var enrollmentCodeEditText: TextInputEditText
     private lateinit var websocketStatusText: TextView
+
+    // Device Health Metrics UI
+    private lateinit var batteryPercentage: TextView
+    private lateinit var batteryProgressBar: LinearProgressIndicator
+    private lateinit var chargingStatus: TextView
+    private lateinit var storagePercentage: TextView
+    private lateinit var storageProgressBar: LinearProgressIndicator
+    private lateinit var ramPercentage: TextView
+    private lateinit var ramProgressBar: LinearProgressIndicator
     
     // Buttons - REMOVED DANGEROUS BUTTONS: lockDeviceButton, enableKioskButton, disableKioskButton, startServicesButton, stopServicesButton
-    private lateinit var refreshStatusButton: MaterialButton
+    private lateinit var refreshStatusButton: MaterialButton // Primary status refresh button
+    private lateinit var quickRefreshButton: MaterialButton  // Quick actions refresh button
     private lateinit var getDeviceInfoButton: MaterialButton
     private lateinit var checkPendingCommandsButton: MaterialButton
     private lateinit var updatePoliciesButton: MaterialButton
@@ -77,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var testInstallButton: MaterialButton
     private lateinit var enableAdminButton: MaterialButton
     private lateinit var enrollButton: MaterialButton
+    private lateinit var statusButton: MaterialButton
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,9 +126,23 @@ class MainActivity : AppCompatActivity() {
         serverUrlEditText = binding.serverUrlEditText
         enrollmentCodeEditText = binding.enrollmentCodeEditText
         websocketStatusText = binding.websocketStatusText
+
+        // Initialize device health metrics UI components
+        try {
+            batteryPercentage = binding.root.findViewById(R.id.batteryPercentage)
+            batteryProgressBar = binding.root.findViewById(R.id.batteryProgressBar)
+            chargingStatus = binding.root.findViewById(R.id.chargingStatus)
+            storagePercentage = binding.root.findViewById(R.id.storagePercentage)
+            storageProgressBar = binding.root.findViewById(R.id.storageProgressBar)
+            ramPercentage = binding.root.findViewById(R.id.ramPercentage)
+            ramProgressBar = binding.root.findViewById(R.id.ramProgressBar)
+        } catch (e: Exception) {
+            Log.w(TAG, "Some health metrics UI components not found", e)
+        }
         
         // Initialize buttons - REMOVED DANGEROUS BUTTONS for security
         refreshStatusButton = binding.refreshStatusButton
+        quickRefreshButton = binding.quickRefreshButton
         getDeviceInfoButton = binding.getDeviceInfoButton
         checkPendingCommandsButton = binding.checkPendingCommandsButton
         updatePoliciesButton = binding.updatePoliciesButton
@@ -124,6 +152,7 @@ class MainActivity : AppCompatActivity() {
         testInstallButton = binding.testInstallButton
         enableAdminButton = binding.enableAdminButton
         enrollButton = binding.enrollButton
+        statusButton = binding.statusButton
         
         // Set default server URL
         val currentServerUrl = preferenceManager.getServerUrl()
@@ -163,18 +192,20 @@ class MainActivity : AppCompatActivity() {
     private fun setupButtonListeners() {
         // SAFE: Status and information
         refreshStatusButton.setOnClickListener { refreshDeviceStatus() }
+        quickRefreshButton.setOnClickListener { refreshDeviceStatus() }  // Same handler as primary button
         getDeviceInfoButton.setOnClickListener { getDeviceInfo() }
-        
+        statusButton.setOnClickListener { openStatus() }
+
         // SAFE: Essential MDM functions
         checkPendingCommandsButton.setOnClickListener { checkPendingCommands() }
         updatePoliciesButton.setOnClickListener { updatePolicies() }
         viewPoliciesButton.setOnClickListener { viewPolicies() }
-        
+
         // SAFE: App management
         requestAppButton.setOnClickListener { requestApp() }
         appInventoryButton.setOnClickListener { getAppInventory() }
         testInstallButton.setOnClickListener { testInstall() }
-        
+
         // SAFE: Initial enrollment only
         enableAdminButton.setOnClickListener { enableDeviceAdmin() }
         enrollButton.setOnClickListener { enrollDevice() }
@@ -193,10 +224,27 @@ class MainActivity : AppCompatActivity() {
             updateWebSocketStatus(isConnected)
             updateStatusIndicator(isConnected)
         }
-        
+
         // Observe device enrollment status
         mdmService.enrollmentStatus.observe(this) { isEnrolled ->
             updateEnrollmentUI(isEnrolled)
+        }
+
+        // Start periodic health metrics refresh (every 5 seconds)
+        startHealthMetricsRefresh()
+    }
+
+    private fun startHealthMetricsRefresh() {
+        healthMetricsRefreshJob = lifecycleScope.launch {
+            while (true) {
+                try {
+                    updateHealthMetrics()
+                    delay(5000) // Update every 5 seconds
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in periodic health metrics refresh", e)
+                    delay(5000) // Still wait before retrying
+                }
+            }
         }
     }
     
@@ -572,6 +620,17 @@ class MainActivity : AppCompatActivity() {
             showSnackbar("App request feature not available", Snackbar.LENGTH_LONG)
         }
     }
+
+    private fun openStatus() {
+        // Launch StatusActivity to display device status information (read-only)
+        try {
+            val intent = Intent(this, com.mdm.app.StatusActivity::class.java)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch status activity", e)
+            showSnackbar("Status not available", Snackbar.LENGTH_LONG)
+        }
+    }
     
     private fun getAppInventory() {
         showProgress(true)
@@ -637,7 +696,33 @@ class MainActivity : AppCompatActivity() {
     
     private fun refreshDeviceStatus() {
         updateUI()
+        updateHealthMetrics()
         showSnackbar("Status refreshed")
+    }
+
+    private fun updateHealthMetrics() {
+        lifecycleScope.launch {
+            try {
+                val metrics = DeviceHealthMetrics.collect(this@MainActivity)
+
+                // Update battery
+                batteryPercentage.text = "${metrics.batteryLevel}%"
+                batteryProgressBar.progress = metrics.batteryLevel
+                chargingStatus.text = metrics.chargingStatus
+
+                // Update storage
+                storagePercentage.text = "${metrics.storageUsagePercent}% • ${metrics.storageString}"
+                storageProgressBar.progress = metrics.storageUsagePercent
+
+                // Update RAM
+                ramPercentage.text = "${metrics.ramUsagePercent}% • ${metrics.ramString}"
+                ramProgressBar.progress = metrics.ramUsagePercent
+
+                Log.d(TAG, "Health metrics updated: Battery=${metrics.batteryLevel}%, Storage=${metrics.storageUsagePercent}%, RAM=${metrics.ramUsagePercent}%")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update health metrics", e)
+            }
+        }
     }
     
     private fun testConnection(serverUrl: String) {
@@ -716,9 +801,14 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
+    override fun onDestroy() {
+        super.onDestroy()
+        healthMetricsRefreshJob?.cancel()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        
+
         when (requestCode) {
             REQUEST_ENABLE_ADMIN -> {
                 if (resultCode == RESULT_OK) {

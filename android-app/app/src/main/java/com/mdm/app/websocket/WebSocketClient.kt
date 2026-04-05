@@ -27,17 +27,22 @@ class WebSocketClient private constructor(private val context: Context) {
         private const val READ_TIMEOUT = 30L
         private const val WRITE_TIMEOUT = 30L
         private const val PING_INTERVAL = 30L
-        
+
+        // Exponential backoff configuration
+        private const val INITIAL_BACKOFF_MS = 1000L  // 1 second
+        private const val MAX_BACKOFF_MS = 60000L     // 60 seconds
+        private const val BACKOFF_MULTIPLIER = 2.0
+
         @Volatile
         private var INSTANCE: WebSocketClient? = null
-        
+
         fun getInstance(context: Context): WebSocketClient {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: WebSocketClient(context).also { INSTANCE = it }
             }
         }
     }
-    
+
     private var webSocket: WebSocket? = null
     private var commandListener: CommandListener? = null
 
@@ -47,7 +52,7 @@ class WebSocketClient private constructor(private val context: Context) {
     }
     private var isConnecting = false
     private var reconnectAttempts = 0
-    private val maxReconnectAttempts = 5
+    private val maxReconnectAttempts = 10
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
@@ -302,9 +307,10 @@ class WebSocketClient private constructor(private val context: Context) {
         )
         sendMessage(ackMessage)
         
-        // Apply policy (this would be handled by the policy engine)
+        // Apply policy (this would be handled by the policy engine in Phase 3)
         scope.launch {
-            applyPolicy(policyId, policyData)
+            Log.d(TAG, "Policy apply scheduled for Phase 3 implementation: $policyId")
+            // TODO: Implement in Phase 3: PolicyEngine.applyPolicy(policyId, policyData)
         }
     }
     
@@ -323,9 +329,10 @@ class WebSocketClient private constructor(private val context: Context) {
         )
         sendMessage(ackMessage)
         
-        // Install app (this would be handled by the app management service)
+        // Install app (this would be handled by the app management service in Phase 3)
         scope.launch {
-            installApp(appId, appUrl)
+            Log.d(TAG, "App install scheduled for Phase 3 implementation: $appId from $appUrl")
+            // TODO: Implement in Phase 3: AppManagementService.installApp(appId, appUrl)
         }
     }
     
@@ -343,9 +350,10 @@ class WebSocketClient private constructor(private val context: Context) {
         )
         sendMessage(ackMessage)
         
-        // Uninstall app (this would be handled by the app management service)
+        // Uninstall app (this would be handled by the app management service in Phase 3)
         scope.launch {
-            uninstallApp(appId)
+            Log.d(TAG, "App uninstall scheduled for Phase 3 implementation: $appId")
+            // TODO: Implement in Phase 3: AppManagementService.uninstallApp(appId)
         }
     }
     
@@ -402,18 +410,31 @@ class WebSocketClient private constructor(private val context: Context) {
     private fun scheduleReconnection() {
         scope.launch {
             reconnectAttempts++
-            val delay = (reconnectAttempts * 1000L).coerceAtMost(10000L) // Max 10 seconds
-            
-            Log.d(TAG, "Scheduling reconnection attempt $reconnectAttempts in ${delay}ms")
-            delay(delay)
-            
+
+            // Exponential backoff: initial * multiplier^(attempts-1), capped at MAX
+            val exponentialDelay = (INITIAL_BACKOFF_MS * Math.pow(BACKOFF_MULTIPLIER, (reconnectAttempts - 1).toDouble())).toLong()
+            val delayWithJitter = exponentialDelay.coerceAtMost(MAX_BACKOFF_MS)
+
+            // Add ±10% jitter to prevent thundering herd
+            val jitter = (delayWithJitter * 0.1 * (Math.random() * 2 - 1)).toLong()
+            val finalDelay = (delayWithJitter + jitter).coerceAtLeast(1000L) // Minimum 1 second
+
+            Log.d(TAG, "Scheduling reconnection attempt $reconnectAttempts/$maxReconnectAttempts in ${finalDelay}ms")
+            delay(finalDelay)
+
             if (reconnectAttempts < maxReconnectAttempts) {
                 val deviceToken = PreferenceManager.getInstance(context).getDeviceToken()
                 val serverUrl = PreferenceManager.getInstance(context).getServerUrl()
-                
+
                 if (!deviceToken.isNullOrEmpty() && !serverUrl.isNullOrEmpty()) {
+                    Log.d(TAG, "Attempting reconnection $reconnectAttempts/$maxReconnectAttempts")
                     connect(serverUrl, deviceToken)
+                } else {
+                    Log.w(TAG, "Cannot reconnect: missing device token or server URL")
                 }
+            } else {
+                Log.e(TAG, "Max reconnection attempts ($maxReconnectAttempts) reached")
+                _connectionError.postValue("Failed to reconnect after $maxReconnectAttempts attempts")
             }
         }
     }

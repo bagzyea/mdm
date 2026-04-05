@@ -626,34 +626,34 @@ const DevicesPage: React.FC = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={() => handleDeviceAction('lock', selectedDevice?.deviceId || '')}>
+        <MenuItem onClick={() => handleDeviceAction('lock', selectedDevice?.id || '')}>
           <Lock sx={{ mr: 1 }} /> Lock Device
         </MenuItem>
-        <MenuItem onClick={() => handleDeviceAction('unlock', selectedDevice?.deviceId || '')}>
+        <MenuItem onClick={() => handleDeviceAction('unlock', selectedDevice?.id || '')}>
           <LockOpen sx={{ mr: 1 }} /> Unlock Device
         </MenuItem>
         <MenuItem onClick={() => handleOpenDialog('assign', selectedDevice || undefined)}>
           <Policy sx={{ mr: 1 }} /> Assign Policies
         </MenuItem>
-        <MenuItem onClick={() => console.log('Send command to:', selectedDevice?.deviceId)}>
+        <MenuItem onClick={() => console.log('Send command to:', selectedDevice?.id)}>
           <Terminal sx={{ mr: 1 }} /> Send Command
         </MenuItem>
         <Divider />
-        <MenuItem onClick={() => handleDeviceAction('suspend', selectedDevice?.deviceId || '')}>
+        <MenuItem onClick={() => handleDeviceAction('suspend', selectedDevice?.id || '')}>
           <Block sx={{ mr: 1 }} /> Suspend Device
         </MenuItem>
-        <MenuItem onClick={() => handleDeviceAction('activate', selectedDevice?.deviceId || '')}>
+        <MenuItem onClick={() => handleDeviceAction('activate', selectedDevice?.id || '')}>
           <LockOpen sx={{ mr: 1 }} /> Activate Device
         </MenuItem>
         <Divider />
-        <MenuItem 
-          onClick={() => handleDeviceAction('wipe', selectedDevice?.deviceId || '')}
+        <MenuItem
+          onClick={() => handleDeviceAction('wipe', selectedDevice?.id || '')}
           sx={{ color: 'warning.main' }}
         >
           <DeleteForever sx={{ mr: 1 }} /> Wipe Device
         </MenuItem>
-        <MenuItem 
-          onClick={() => handleDeviceAction('delete', selectedDevice?.deviceId || '')}
+        <MenuItem
+          onClick={() => handleDeviceAction('delete', selectedDevice?.id || '')}
           sx={{ color: 'error.main' }}
         >
           <DeleteForever sx={{ mr: 1 }} /> Delete from MDM

@@ -78,6 +78,13 @@
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- Device Health Card -->
+            <include
+                layout="@layout/card_device_health"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp" />
+
             <!-- Device Status Card -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.UBOSMDM.Card"
@@ -184,7 +191,7 @@
                             app:icon="@android:drawable/ic_menu_info_details" />
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/refreshStatusButton"
+                            android:id="@+id/quickRefreshButton"
                             style="@style/Widget.UBOSMDM.Button.Secondary"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
@@ -192,6 +199,24 @@
                             android:layout_marginStart="6dp"
                             android:text="Refresh Status"
                             app:icon="@android:drawable/ic_menu_rotate" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="0dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/statusButton"
+                            style="@style/Widget.UBOSMDM.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="6dp"
+                            android:text="Device Status"
+                            app:icon="@android:drawable/ic_menu_info_details" />
 
                     </LinearLayout>
 
