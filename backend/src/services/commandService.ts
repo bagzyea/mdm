@@ -10,11 +10,21 @@ export class CommandService {
   // Send real-time command notification to devices
   async notifyDeviceOfCommand(deviceId: string, commandId: string, command: CommandType, parameters?: unknown) {
     try {
+      console.log(`[COMMAND] notifyDeviceOfCommand called for deviceId: ${deviceId}, commandId: ${commandId}, command: ${command}`);
+
       // Find device's socket connection
       const sockets = await this.io.fetchSockets();
+      console.log(`[COMMAND] Total connected sockets: ${sockets.length}`);
+
+      // Log all device sockets for debugging
+      const deviceSockets = sockets.filter(s => s.data.deviceId);
+      console.log(`[COMMAND] Device sockets found: ${deviceSockets.map(s => s.data.deviceId).join(', ')}`);
+
       const deviceSocket = sockets.find(socket => socket.data.deviceId === deviceId);
 
       if (deviceSocket) {
+        console.log(`[COMMAND] ✓ Found socket for device ${deviceId}, emitting executeCommand`);
+
         // Send command directly to connected device.
         // Shape: { commandId, commandType, payload } — matches Android handleServerCommand()
         deviceSocket.emit('executeCommand', {
@@ -24,6 +34,8 @@ export class CommandService {
           timestamp: new Date().toISOString()
         });
 
+        console.log(`[COMMAND] ✓ Emitted executeCommand event for deviceId: ${deviceId}`);
+
         // Update command status to SENT
         await prisma.remoteCommand.update({
           where: { id: commandId },
@@ -32,12 +44,33 @@ export class CommandService {
 
         return true;
       } else {
-        console.log(`Device ${deviceId} not connected via WebSocket`);
+        console.log(`[COMMAND] ✗ Device ${deviceId} not found in connected sockets`);
+        console.log(`[COMMAND] Searching for device by name in database...`);
+
+        // Try to find device in database to get more info
+        const device = await prisma.device.findUnique({
+          where: { deviceId },
+          select: { id: true, deviceId: true, status: true }
+        });
+
+        if (device) {
+          console.log(`[COMMAND] Device found in DB - ID: ${device.id}, deviceId: ${device.deviceId}, status: ${device.status}`);
+        } else {
+          console.log(`[COMMAND] Device not found in database either. Checking if ID is a cuid...`);
+          const deviceByDbId = await prisma.device.findUnique({
+            where: { id: deviceId },
+            select: { id: true, deviceId: true, status: true }
+          });
+          if (deviceByDbId) {
+            console.log(`[COMMAND] Found by database ID - deviceId: ${deviceByDbId.deviceId}, status: ${deviceByDbId.status}`);
+          }
+        }
+
         // In a real implementation, you would use push notifications here
         return false;
       }
     } catch (error) {
-      console.error('Error notifying device of command:', error);
+      console.error('[COMMAND] Error notifying device of command:', error);
       return false;
     }
   }

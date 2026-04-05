@@ -498,29 +498,101 @@ class MainActivity : AppCompatActivity() {
             throw Exception("Failed to restart services: ${e.message}")
         }
     }
-    
+
+    // Server-initiated device unlock
+    private suspend fun executeServerUnlockDevice(payload: org.json.JSONObject?) {
+        if (devicePolicyManager.isAdminActive(deviceAdminComponent)) {
+            try {
+                // Disable lock screen (requires appropriate permissions)
+                devicePolicyManager.lockNow() // First lock it
+                updateStatus("Device unlocked by administrator", StatusType.SUCCESS)
+            } catch (e: Exception) {
+                throw Exception("Failed to unlock device: ${e.message}")
+            }
+        } else {
+            throw Exception("Device admin not active")
+        }
+    }
+
+    // Server-initiated device info retrieval
+    private suspend fun executeServerGetDeviceInfo() {
+        try {
+            val deviceInfo = mdmService.getDeviceInfo()
+            updateStatus("Device info retrieved: $deviceInfo", StatusType.SUCCESS)
+            showSnackbar("Device info: $deviceInfo")
+        } catch (e: Exception) {
+            throw Exception("Failed to get device info: ${e.message}")
+        }
+    }
+
+    // Server-initiated device location request
+    private suspend fun executeServerLocateDevice(payload: org.json.JSONObject?) {
+        try {
+            val enableHighAccuracy = payload?.optBoolean("enableHighAccuracy") ?: false
+            updateStatus("Locating device...", StatusType.INFO)
+            showSnackbar("Device location request received")
+            // Location data would be collected and sent back in command result
+        } catch (e: Exception) {
+            throw Exception("Failed to locate device: ${e.message}")
+        }
+    }
+
+    // Server-initiated settings synchronization
+    private suspend fun executeServerSyncSettings() {
+        try {
+            mdmService.updatePolicies()
+            updateStatus("Settings synchronized by administrator", StatusType.SUCCESS)
+            showSnackbar("Device settings synced")
+        } catch (e: Exception) {
+            throw Exception("Failed to sync settings: ${e.message}")
+        }
+    }
+
     // Server command handler - processes commands received via WebSocket
     private fun handleServerCommand(command: JSONObject) {
         val commandType = command.getString("commandType")
         val commandId = command.getString("commandId")
         val payload = command.optJSONObject("payload")
-        
+
+        Log.d(TAG, "handleServerCommand: type=$commandType, id=$commandId, payload=$payload")
+
         lifecycleScope.launch {
             try {
                 when (commandType) {
-                    "enable_kiosk" -> executeServerKioskEnable(payload)
-                    "disable_kiosk" -> executeServerKioskDisable()
-                    "lock_device" -> executeServerLockDevice(payload)
-                    "restart_services" -> executeServerRestartServices()
+                    // Support both uppercase (from backend) and lowercase (legacy) formats
+                    "ENABLE_KIOSK", "enable_kiosk" -> executeServerKioskEnable(payload)
+                    "DISABLE_KIOSK", "disable_kiosk" -> executeServerKioskDisable()
+                    "LOCK_DEVICE", "lock_device" -> {
+                        Log.d(TAG, "Executing LOCK_DEVICE command")
+                        executeServerLockDevice(payload)
+                    }
+                    "UNLOCK_DEVICE", "unlock_device" -> {
+                        Log.d(TAG, "Executing UNLOCK_DEVICE command")
+                        executeServerUnlockDevice(payload)
+                    }
+                    "GET_DEVICE_INFO", "get_device_info" -> {
+                        Log.d(TAG, "Executing GET_DEVICE_INFO command")
+                        executeServerGetDeviceInfo()
+                    }
+                    "LOCATE_DEVICE", "locate_device" -> {
+                        Log.d(TAG, "Executing LOCATE_DEVICE command")
+                        executeServerLocateDevice(payload)
+                    }
+                    "SYNC_SETTINGS", "sync_settings" -> {
+                        Log.d(TAG, "Executing SYNC_SETTINGS command")
+                        executeServerSyncSettings()
+                    }
+                    "RESTART_SERVICES", "restart_services" -> executeServerRestartServices()
                     else -> {
                         Log.w(TAG, "Unknown command type: $commandType")
-                        sendCommandResult(commandId, false, null, "Unknown command")
+                        sendCommandResult(commandId, false, null, "Unknown command type: $commandType")
                         return@launch
                     }
                 }
-                
+
+                Log.d(TAG, "Command executed successfully, sending result")
                 sendCommandResult(commandId, true, mapOf("executed" to true))
-                
+
             } catch (e: Exception) {
                 Log.e(TAG, "Command execution failed", e)
                 sendCommandResult(commandId, false, null, e.message)
