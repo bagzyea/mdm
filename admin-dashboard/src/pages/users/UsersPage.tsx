@@ -223,9 +223,20 @@ const UsersPage: React.FC = () => {
   const canManageUsers = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          component="h1"
+          sx={{ 
+            fontWeight: 800,
+            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            color: 'transparent',
+            letterSpacing: '-0.02em'
+          }}
+        >
           User Management
         </Typography>
         {canManageUsers && (
@@ -233,6 +244,16 @@ const UsersPage: React.FC = () => {
             variant="contained"
             startIcon={<PersonAdd />}
             onClick={() => handleOpenDialog()}
+            sx={{ 
+              borderRadius: 2, 
+              textTransform: 'none', 
+              fontWeight: 600,
+              boxShadow: '0 4px 14px 0 rgba(37, 99, 235, 0.25)',
+              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)',
+              }
+            }}
           >
             Add User
           </Button>
@@ -245,83 +266,86 @@ const UsersPage: React.FC = () => {
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
+      <Card sx={{ borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', border: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ p: 0 }}>
           {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, gap: 2 }}>
+              <CircularProgress size={32} thickness={4} />
+              <Typography variant="body2" color="text.secondary">Loading users...</Typography>
             </Box>
           ) : (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
+            <TableContainer sx={{ overflowX: 'auto', borderRadius: 0 }}>
+              <Table sx={{ minWidth: 800 }}>
+                <TableHead sx={{ backgroundColor: '#fafafa', borderBottom: '2px solid', borderColor: 'divider' }}>
                   <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Username</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Created</TableCell>
-                    <TableCell>Last Login</TableCell>
-                    {canManageUsers && <TableCell>Actions</TableCell>}
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Username</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Role</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Created</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Last Login</TableCell>
+                    {canManageUsers && <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Actions</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {users.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell>
-                        {user.firstName} {user.lastName}
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a' }}>
+                          {user.firstName} {user.lastName}
+                        </Typography>
                       </TableCell>
-                      <TableCell>{user.username}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={user.role.replace('_', ' ')}
-                          color={getRoleColor(user.role) as any}
-                          size="small"
-                        />
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{user.username}</Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{user.email}</Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: getRoleColor(user.role) === 'error' ? '#ef4444' : getRoleColor(user.role) === 'warning' ? '#f59e0b' : getRoleColor(user.role) === 'primary' ? '#8b5cf6' : '#64748b' }}>
+                          {user.role.replace('_', ' ')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                         <Chip
                           label={user.isActive ? 'Active' : 'Inactive'}
                           color={user.isActive ? 'success' : 'error'}
                           size="small"
+                          sx={{ fontWeight: 600, borderRadius: 1, height: 24, fontSize: '0.7rem' }}
                         />
                       </TableCell>
-                      <TableCell>
-                        {new Date(user.createdAt).toLocaleDateString()}
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </Typography>
                       </TableCell>
-                      <TableCell>
-                        {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
+                      <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
+                        </Typography>
                       </TableCell>
                       {canManageUsers && (
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TableCell align="right" sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                             <Tooltip title="Edit User">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenDialog(user)}
-                              >
-                                <Edit />
+                              <IconButton size="small" onClick={() => handleOpenDialog(user)} sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main', bgcolor: 'warning.50' } }}>
+                                <Edit fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title={user.isActive ? 'Deactivate' : 'Activate'}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleToggleActive(user.id, user.isActive)}
-                                color={user.isActive ? 'warning' : 'success'}
+                                sx={{ color: user.isActive ? '#f59e0b' : '#10b981', '&:hover': { bgcolor: user.isActive ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)' } }}
                               >
-                                {user.isActive ? <Block /> : <CheckCircle />}
+                                {user.isActive ? <Block fontSize="small" /> : <CheckCircle fontSize="small" />}
                               </IconButton>
                             </Tooltip>
                             {currentUser?.role === 'SUPER_ADMIN' && user.id !== currentUser.id && (
                               <Tooltip title="Delete User">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleDeleteUser(user.id)}
-                                  color="error"
-                                >
-                                  <Delete />
+                                <IconButton size="small" onClick={() => handleDeleteUser(user.id)} sx={{ color: 'text.secondary', '&:hover': { color: 'error.main', bgcolor: 'error.50' } }}>
+                                  <Delete fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                             )}
@@ -341,7 +365,7 @@ const UsersPage: React.FC = () => {
               </Table>
             </TableContainer>
           )}
-        </CardContent>
+        </Box>
       </Card>
 
       {/* Add/Edit User Dialog */}

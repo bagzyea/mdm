@@ -68,7 +68,8 @@
       "Read(//c/code/MDM/**)",
       "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 install -r c:/code/MDM/android-app/app/build/outputs/apk/debug/app-debug.apk)",
       "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 logcat -d \"*:E\")",
-      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell pm clear com.mdm.app.debug)"
+      "Bash(~/AppData/Local/Android/Sdk/platform-tools/adb -s emulator-5554 shell pm clear com.mdm.app.debug)",
+      "Bash(./gradlew clean:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

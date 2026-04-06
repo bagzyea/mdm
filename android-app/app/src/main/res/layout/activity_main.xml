@@ -37,16 +37,16 @@
                 app:layout_collapseMode="parallax">
 
                 <ImageView
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
                     android:src="@drawable/ubos_logo"
                     android:scaleType="centerCrop"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginBottom="12dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="UBOS MDM"
+                    android:text="Company Portal"
                     android:textAppearance="?attr/textAppearanceHeadlineMedium"
                     android:textColor="?attr/colorOnPrimary"
                     android:fontFamily="sans-serif-medium" />
@@ -54,7 +54,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Mobile Device Management"
+                    android:text="UBOS Secure Endpoint"
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:textColor="?attr/colorOnPrimary"
                     android:alpha="0.8"
@@ -85,62 +85,41 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Device Status Card -->
+            <!-- Primary Compliance Status Card -->
             <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
+                app:cardElevation="2dp"
+                app:cardCornerRadius="16dp"
+                app:strokeWidth="0dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:gravity="center"
+                    android:paddingTop="32dp"
+                    android:paddingBottom="24dp"
+                    android:paddingHorizontal="20dp">
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="16dp">
-
-                        <View
-                            android:id="@+id/statusIndicator"
-                            android:layout_width="12dp"
-                            android:layout_height="12dp"
-                            android:background="@drawable/status_indicator"
-                            android:layout_marginEnd="12dp" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Device Status"
-                            android:textAppearance="?attr/textAppearanceHeadlineSmall"
-                            android:textColor="?attr/colorOnSurface" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/refreshStatusButton"
-                            style="@style/Widget.UBOSMDM.Button.Secondary"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Refresh"
-                            android:minWidth="0dp"
-                            android:insetLeft="0dp"
-                            android:insetRight="0dp"
-                            app:icon="@android:drawable/ic_menu_rotate" />
-
-                    </LinearLayout>
+                    <View
+                        android:id="@+id/statusIndicator"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/status_indicator"
+                        android:layout_marginBottom="16dp" />
 
                     <TextView
                         android:id="@+id/statusTextView"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Checking device status..."
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginBottom="16dp" />
+                        android:text="Checking security..."
+                        android:textAlignment="center"
+                        android:textAppearance="?attr/textAppearanceTitleLarge"
+                        android:textColor="?attr/colorOnSurface"
+                        android:fontFamily="sans-serif-medium"
+                        android:layout_marginBottom="24dp" />
 
                     <com.google.android.material.progressindicator.LinearProgressIndicator
                         android:id="@+id/statusProgressBar"
@@ -148,17 +127,28 @@
                         android:layout_height="wrap_content"
                         android:visibility="gone"
                         android:indeterminate="true" />
+                        
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/refreshStatusButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="54dp"
+                        android:text="Sync Device Settings"
+                        app:cornerRadius="12dp"
+                        app:icon="@android:drawable/ic_popup_sync"
+                        app:iconGravity="textStart" />
 
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Quick Actions Card -->
+            <!-- Corporate Apps Card -->
             <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
+                app:cardElevation="2dp"
+                app:cardCornerRadius="16dp"
+                app:strokeWidth="0dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -169,200 +159,41 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Quick Actions"
-                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                        android:text="Corporate Applications"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
                         android:textColor="?attr/colorOnSurface"
                         android:layout_marginBottom="16dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginBottom="12dp">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/getDeviceInfoButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="6dp"
-                            android:text="Device Info"
-                            app:icon="@android:drawable/ic_menu_info_details" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/quickRefreshButton"
-                            style="@style/Widget.UBOSMDM.Button.Secondary"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="6dp"
-                            android:text="Refresh Status"
-                            app:icon="@android:drawable/ic_menu_rotate" />
-
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginBottom="0dp">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/statusButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="6dp"
-                            android:text="Device Status"
-                            app:icon="@android:drawable/ic_menu_info_details" />
-
-                    </LinearLayout>
-
-                    <!-- REMOVED: Dangerous kiosk mode buttons - now controlled by server only -->
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Device Management Card -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Device Management"
-                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
-                        android:textColor="?attr/colorOnSurface"
-                        android:layout_marginBottom="16dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginBottom="12dp">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/checkPendingCommandsButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="6dp"
-                            android:text="Check Commands"
-                            app:icon="@android:drawable/ic_menu_send" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/updatePoliciesButton"
-                            style="@style/Widget.UBOSMDM.Button.Secondary"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="6dp"
-                            android:text="Update Policies"
-                            app:icon="@android:drawable/ic_menu_manage" />
-
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/viewPoliciesButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="View Policies"
-                            app:icon="@android:drawable/ic_menu_view" />
-
-                        <!-- REMOVED: Start Services button - now controlled by server only -->
-
-                    </LinearLayout>
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- App Management Card -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Application Management"
-                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
-                        android:textColor="?attr/colorOnSurface"
-                        android:layout_marginBottom="16dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginBottom="12dp">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/requestAppButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="6dp"
-                            android:text="Request App"
-                            app:icon="@android:drawable/ic_menu_add" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/appInventoryButton"
-                            style="@style/Widget.UBOSMDM.Button.Secondary"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="6dp"
-                            android:text="App Inventory"
-                            app:icon="@android:drawable/ic_menu_agenda" />
-
-                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/testInstallButton"
-                        style="@style/Widget.UBOSMDM.Button.Secondary"
+                        android:id="@+id/appInventoryButton"
+                        style="@style/Widget.Material3.Button.TonalButton"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Test App Installation"
-                        app:icon="@android:drawable/ic_menu_upload" />
+                        android:layout_height="54dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="View Installed Corporate Apps"
+                        app:cornerRadius="12dp"
+                        app:icon="@android:drawable/ic_menu_agenda" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/requestAppButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="54dp"
+                        android:text="Request IT App Install"
+                        app:cornerRadius="12dp"
+                        app:icon="@android:drawable/ic_menu_add" />
 
                 </LinearLayout>
-
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Device Enrollment Card -->
+            <!-- Support & Info Card -->
             <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card.Outlined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
+                app:cardElevation="2dp"
+                app:cardCornerRadius="16dp"
+                app:strokeWidth="0dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -373,119 +204,40 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Device Enrollment"
-                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                        android:text="IT Helpdesk &amp; Info"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
                         android:textColor="?attr/colorOnSurface"
                         android:layout_marginBottom="16dp" />
 
-                    <com.google.android.material.textfield.TextInputLayout
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/getDeviceInfoButton"
+                        style="@style/Widget.Material3.Button.TextButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="16dp"
-                        android:hint="Server URL"
-                        app:startIconDrawable="@android:drawable/ic_menu_share"
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/serverUrlEditText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textUri"
-                            android:text="https://your-mdm-server.com" />
-
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="16dp"
-                        android:hint="Enrollment Code"
-                        app:startIconDrawable="@android:drawable/ic_menu_edit"
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/enrollmentCodeEditText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textPassword" />
-
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/enableAdminButton"
-                            style="@style/Widget.UBOSMDM.Button"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="6dp"
-                            android:text="Enable Admin"
-                            app:icon="@android:drawable/ic_menu_myplaces" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/enrollButton"
-                            style="@style/Widget.UBOSMDM.Button.Secondary"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="6dp"
-                            android:text="Enroll Device"
-                            app:icon="@android:drawable/ic_menu_upload" />
-
-                    </LinearLayout>
+                        android:text="View Device Hardware Info"
+                        app:icon="@android:drawable/ic_menu_info_details" />
 
                 </LinearLayout>
-
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Service Control Card -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.UBOSMDM.Card.Outlined"
+            <!-- Hidden Technical Bindings Block (To Prevent Crash) -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Connection Status"
-                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
-                        android:textColor="?attr/colorOnSurface"
-                        android:layout_marginBottom="16dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <!-- REMOVED: Stop Services button - now controlled by server only -->
-
-                        <TextView
-                            android:id="@+id/websocketStatusText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="WebSocket: Disconnected"
-                            android:textAppearance="?attr/textAppearanceBodyLarge"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:gravity="center"
-                            android:padding="16dp"
-                            android:background="?attr/colorSurfaceVariant" />
-
-                    </LinearLayout>
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
+                android:orientation="vertical"
+                android:visibility="gone">
+                <com.google.android.material.button.MaterialButton android:id="@+id/quickRefreshButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/statusButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/checkPendingCommandsButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/updatePoliciesButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/viewPoliciesButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/testInstallButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <TextView android:id="@+id/websocketStatusText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <EditText android:id="@+id/serverUrlEditText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <EditText android:id="@+id/enrollmentCodeEditText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/enableAdminButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/enrollButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
 
         </LinearLayout>
 

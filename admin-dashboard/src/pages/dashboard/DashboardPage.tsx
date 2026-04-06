@@ -41,43 +41,15 @@ interface StatsCardProps {
 
 const StatsCard: React.FC<StatsCardProps> = ({ title, value, icon, color, trend }) => (
   <Card sx={{ 
-    position: 'relative',
-    overflow: 'visible',
-    background: `linear-gradient(135deg, ${
-      color === 'primary' ? 'rgba(37, 99, 235, 0.02)' :
-      color === 'secondary' ? 'rgba(124, 58, 237, 0.02)' :
-      color === 'success' ? 'rgba(5, 150, 105, 0.02)' :
-      color === 'info' ? 'rgba(8, 145, 178, 0.02)' :
-      'rgba(37, 99, 235, 0.02)'
-    } 0%, rgba(255, 255, 255, 1) 100%)`,
-    border: `1px solid ${
-      color === 'primary' ? 'rgba(37, 99, 235, 0.1)' :
-      color === 'secondary' ? 'rgba(124, 58, 237, 0.1)' :
-      color === 'success' ? 'rgba(5, 150, 105, 0.1)' :
-      color === 'info' ? 'rgba(8, 145, 178, 0.1)' :
-      'rgba(37, 99, 235, 0.1)'
-    }`,
-    '&::before': {
-      content: '""',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 4,
-      background: `linear-gradient(90deg, ${
-        color === 'primary' ? '#2563eb' :
-        color === 'secondary' ? '#7c3aed' :
-        color === 'success' ? '#059669' :
-        color === 'info' ? '#0891b2' :
-        '#2563eb'
-      }, ${
-        color === 'primary' ? '#3b82f6' :
-        color === 'secondary' ? '#8b5cf6' :
-        color === 'success' ? '#10b981' :
-        color === 'info' ? '#22d3ee' :
-        '#3b82f6'
-      })`,
-      borderRadius: '16px 16px 0 0',
+    borderRadius: 2, 
+    boxShadow: 'none',
+    border: '1px solid',
+    borderColor: 'divider',
+    background: '#ffffff',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      borderColor: `${color}.main`,
+      boxShadow: `0 4px 12px rgba(0,0,0,0.03)`
     }
   }}>
     <CardContent sx={{ p: 3 }}>
@@ -137,11 +109,11 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, value, icon, color, trend 
           )}
         </Box>
         <Box sx={{ 
-          p: 2,
-          borderRadius: 3,
+          p: 1.5,
+          borderRadius: 2,
           backgroundColor: `${color}.50`,
           color: `${color}.main`,
-          '& svg': { fontSize: 32 }
+          '& svg': { fontSize: 24 }
         }}>
           {icon}
         </Box>
@@ -359,20 +331,12 @@ const DashboardPage: React.FC = () => {
         <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <Paper sx={{ 
-              p: 4, 
-              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.02) 0%, rgba(255, 255, 255, 1) 100%)',
-              border: '1px solid rgba(37, 99, 235, 0.1)',
-              position: 'relative',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 4,
-                background: 'linear-gradient(90deg, #2563eb, #3b82f6)',
-                borderRadius: '16px 16px 0 0',
-              }
+              p: 3, 
+              borderRadius: 2,
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              border: '1px solid',
+              borderColor: 'divider',
+              background: '#ffffff',
             }}>
               <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
                 Device Health Overview
@@ -473,21 +437,13 @@ const DashboardPage: React.FC = () => {
         {/* Device Status Distribution */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ 
-            p: 4, 
+            p: 3, 
             height: 450,
-            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.02) 0%, rgba(255, 255, 255, 1) 100%)',
-            border: '1px solid rgba(124, 58, 237, 0.1)',
-            position: 'relative',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 4,
-              background: 'linear-gradient(90deg, #7c3aed, #8b5cf6)',
-              borderRadius: '16px 16px 0 0',
-            }
+            borderRadius: 2,
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            border: '1px solid',
+            borderColor: 'divider',
+            background: '#ffffff',
           }}>
             <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
               Device Status Distribution
@@ -535,21 +491,13 @@ const DashboardPage: React.FC = () => {
         {/* Device Health Issues */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ 
-            p: 4, 
+            p: 3, 
             height: 450,
-            background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.02) 0%, rgba(255, 255, 255, 1) 100%)',
-            border: '1px solid rgba(220, 38, 38, 0.1)',
-            position: 'relative',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 4,
-              background: 'linear-gradient(90deg, #dc2626, #ef4444)',
-              borderRadius: '16px 16px 0 0',
-            }
+            borderRadius: 2,
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            border: '1px solid',
+            borderColor: 'divider',
+            background: '#ffffff',
           }}>
             <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
               Device Health Issues
@@ -591,7 +539,15 @@ const DashboardPage: React.FC = () => {
       {/* Command Activity Chart */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, height: 400 }}>
+          <Paper sx={{ 
+            p: 3, 
+            height: 400,
+            borderRadius: 2,
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            border: '1px solid',
+            borderColor: 'divider',
+            background: '#ffffff',
+          }}>
             <Typography variant="h6" gutterBottom>
               Current Command Status
             </Typography>
@@ -613,103 +569,42 @@ const DashboardPage: React.FC = () => {
 
       {/* Status Overview */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <CheckCircle sx={{ color: 'success.main', mr: 1 }} />
-                <Typography variant="h6">System Health</Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                All systems operational
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">API Response Time</Typography>
-                  <Typography variant="body2" color="success.main">98ms</Typography>
+        {[
+          { title: 'System Health', icon: <CheckCircle sx={{ color: 'success.main', mr: 1, fontSize: 20 }} />, desc: 'All systems operational',
+            rows: [ { label: 'API Response Time', value: '98ms', color: 'success.main' }, { label: 'Database Status', value: 'Healthy', color: 'success.main' }, { label: 'WebSocket Connections', value: `${mergedStats.activeDevices || 0} active`, color: 'success.main' } ] },
+          { title: 'Battery Status', icon: <Battery90 sx={{ color: 'primary.main', mr: 1, fontSize: 20 }} />, desc: 'Device battery levels',
+            rows: [ { label: 'Low Battery Devices', value: healthSummary?.lowBatteryDevices || 0, color: 'warning.main' }, { label: 'Pending Commands', value: mergedStats.pendingCommands || 0, color: 'warning.main' }, { label: 'Failed Commands', value: mergedStats.failedCommands || 0, color: 'error.main' } ] },
+          { title: 'Storage Status', icon: <StorageIcon sx={{ color: 'primary.main', mr: 1, fontSize: 20 }} />, desc: 'Device storage usage',
+            rows: [ { label: 'Low Storage Devices', value: healthSummary?.lowStorageDevices || 0, color: 'error.main' }, { label: 'Active Devices', value: mergedStats.activeDevices || 0, color: 'success.main' }, { label: 'Inactive Devices', value: mergedStats.inactiveDevices || 0, color: 'text.secondary' } ] }
+        ].map((col, idx) => (
+          <Grid item xs={12} md={4} key={idx}>
+            <Card sx={{ 
+              borderRadius: 2, 
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              border: '1px solid',
+              borderColor: 'divider',
+              background: '#ffffff',
+            }}>
+              <CardContent sx={{ p: 2.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                  {col.icon}
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{col.title}</Typography>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Database Status</Typography>
-                  <Typography variant="body2" color="success.main">Healthy</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                  {col.desc}
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {col.rows.map((row, rIdx) => (
+                    <Box key={rIdx} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem' }}>{row.label}</Typography>
+                      <Typography variant="body2" sx={{ color: row.color, fontWeight: 600, fontSize: '0.8125rem' }}>{row.value}</Typography>
+                    </Box>
+                  ))}
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">WebSocket Connections</Typography>
-                  <Typography variant="body2" color="success.main">
-                    {mergedStats.activeDevices || 0} active
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Battery90 sx={{ color: 'primary.main', mr: 1 }} />
-                <Typography variant="h6">Battery Status</Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Device battery levels
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Low Battery Devices</Typography>
-                  <Typography variant="body2" color="warning.main">
-                    {healthSummary?.lowBatteryDevices || 0}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Pending Commands</Typography>
-                  <Typography variant="body2" color="warning.main">
-                    {mergedStats.pendingCommands || 0}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Failed Commands</Typography>
-                  <Typography variant="body2" color="error.main">
-                    {mergedStats.failedCommands || 0}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <StorageIcon sx={{ color: 'primary.main', mr: 1 }} />
-                <Typography variant="h6">Storage Status</Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Device storage usage
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Low Storage Devices</Typography>
-                  <Typography variant="body2" color="error.main">
-                    {healthSummary?.lowStorageDevices || 0}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Active Devices</Typography>
-                  <Typography variant="body2" color="success.main">
-                    {mergedStats.activeDevices || 0}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Inactive Devices</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {mergedStats.inactiveDevices || 0}
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
       </Grid>
     </Box>
   );

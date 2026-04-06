@@ -85,13 +85,15 @@ export interface Policy {
   updatedAt: string;
 }
 
-export type PolicyType = 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE';
+export type PolicyType = 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM';
 
 export interface PolicyRules {
   security?: SecurityPolicy;
   network?: NetworkPolicy;
   application?: ApplicationPolicy;
   compliance?: CompliancePolicy;
+  hardware?: any;
+  system?: any;
 }
 
 export interface SecurityPolicy {

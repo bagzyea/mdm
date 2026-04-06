@@ -31,6 +31,7 @@ import {
   Grid,
   Divider
 } from '@mui/material';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -41,7 +42,8 @@ import {
   Check as ValidateIcon,
   Devices as DevicesIcon,
   Apps as AppsIcon,
-  Folder as FilesIcon
+  Folder as FilesIcon,
+  QrCode as QrCodeIcon
 } from '@mui/icons-material';
 import {
   FormControlLabel,
@@ -91,6 +93,13 @@ export const ProvisioningProfilesPage: React.FC = () => {
   const [menuProfile, setMenuProfile] = useState<ProvisioningProfile | null>(null);
   const [validationResult, setValidationResult] = useState<ProvisioningValidationResult | null>(null);
   const [compatibleDevices, setCompatibleDevices] = useState<CompatibleDevicesResponse | null>(null);
+
+  // QR Code Enrollment State
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [enrollmentProfile, setEnrollmentProfile] = useState<ProvisioningProfile | null>(null);
+  const [wifiSsid, setWifiSsid] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [apkUrl, setApkUrl] = useState('https://mdm.yourcompany.com/api/v1/apk');
 
   // Form state
   const [formData, setFormData] = useState<ProfileFormData>({
@@ -299,6 +308,29 @@ export const ProvisioningProfilesPage: React.FC = () => {
     }));
   };
 
+  const handleOpenQrEnrollment = (profile: ProvisioningProfile) => {
+    setEnrollmentProfile(profile);
+    setQrDialogOpen(true);
+  };
+
+  const generateProvisioningJson = () => {
+    if (!enrollmentProfile) return '';
+
+    const payload = {
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.mdm.app/com.mdm.app.admin.MDMDeviceAdminReceiver",
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "", // Add correct SHA-256 hash if enforcing security
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": apkUrl,
+      "android.app.extra.PROVISIONING_WIFI_SSID": wifiSsid,
+      "android.app.extra.PROVISIONING_WIFI_PASSWORD": wifiPassword,
+      "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+      "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true,
+      "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
+        "provisioning_profile_id": enrollmentProfile.id
+      }
+    };
+    return JSON.stringify(payload);
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -438,6 +470,13 @@ export const ProvisioningProfilesPage: React.FC = () => {
         }}>
           <DevicesIcon sx={{ mr: 1 }} />
           Compatible Devices
+        </MenuItemComponent>
+        <MenuItemComponent onClick={() => {
+          if (menuProfile) handleOpenQrEnrollment(menuProfile);
+          handleMenuClose();
+        }}>
+          <QrCodeIcon sx={{ mr: 1, color: 'primary.main' }} />
+          Zero-Touch QR Setup
         </MenuItemComponent>
         <Divider />
         <MenuItemComponent 
@@ -835,6 +874,76 @@ export const ProvisioningProfilesPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCompatibleDevices(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* QR Code Enrollment Dialog */}
+      <Dialog
+        open={qrDialogOpen}
+        onClose={() => setQrDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Zero-Touch QR Enrollment</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body1" paragraph>
+              To provision a new device, factory reset the Android device, tap the "Hello" or "Welcome" screen 6 times rapidly, and scan the generated QR code.
+            </Typography>
+            
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>Network & Server Config</Typography>
+                <TextField
+                  fullWidth
+                  label="Enrollment Target APK URL"
+                  value={apkUrl}
+                  onChange={(e) => setApkUrl(e.target.value)}
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Local Wi-Fi SSID"
+                  value={wifiSsid}
+                  onChange={(e) => setWifiSsid(e.target.value)}
+                  placeholder="Company Network"
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Local Wi-Fi Password"
+                  type="password"
+                  value={wifiPassword}
+                  onChange={(e) => setWifiPassword(e.target.value)}
+                  placeholder="Network Password"
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Paper elevation={3} sx={{ p: 4, display: 'inline-block', bgcolor: 'white' }}>
+                  {wifiSsid && apkUrl ? (
+                    <QRCodeSVG 
+                      value={generateProvisioningJson()} 
+                      size={256}
+                      level="M"
+                    />
+                  ) : (
+                    <Box sx={{ width: 256, height: 256, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed grey' }}>
+                      <Typography color="text.secondary" align="center">
+                        Please provide Wi-Fi SSID and APK URL to generate QR payload
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+                <Typography variant="caption" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center', display: 'block' }}>
+                  Profile ID: {enrollmentProfile?.id}
+                </Typography>
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQrDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -55,7 +55,7 @@ interface Policy {
   id: string;
   name: string;
   description: string;
-  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE';
+  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -68,7 +68,7 @@ interface Policy {
 interface PolicyFormData {
   name: string;
   description: string;
-  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE';
+  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM';
   isActive: boolean;
   rules: any;
   targetDevices: string[];
@@ -108,15 +108,19 @@ const PoliciesPage: React.FC = () => {
     targetGroups: [],
   });
 
-  const defaultRules = {
+  const defaultRules: Record<string, any> = {
     SECURITY: {
       passwordRequired: true,
       passwordMinLength: 8,
       passwordComplexity: true,
+      passwordExpiryDays: 90,
+      passwordHistoryCount: 5,
       biometricEnabled: false,
       encryptionRequired: true,
       screenLockTimeout: 5,
       maxFailedAttempts: 5,
+      autoWipeOnFailure: false,
+      trustAgentsAllowed: false,
     },
     NETWORK: {
       wifiRestrictions: false,
@@ -126,6 +130,9 @@ const PoliciesPage: React.FC = () => {
       cellularDataEnabled: true,
       roamingEnabled: false,
       hotspotEnabled: false,
+      nfcDisabled: false,
+      airplaneModeDisabled: false,
+      globalProxyUrl: '',
     },
     APPLICATION: {
       appInstallationRestricted: false,
@@ -135,13 +142,31 @@ const PoliciesPage: React.FC = () => {
       kioskApp: '',
       sideloadingAllowed: false,
       appUpdateRequired: true,
+      clipboardDlpEnabled: false,
+      preventAppDataClearing: true,
+      safeSearchEnforced: false,
+    },
+    HARDWARE: {
+      cameraDisabled: false,
+      usbFileTransferDisabled: false,
+      externalStorageDisabled: false,
+      screenCaptureDisabled: false,
+      microphoneDisabled: false,
+    },
+    SYSTEM: {
+      systemUpdatePolicy: 'AUTOMATIC',
+      updateWindowStart: '02:00',
+      updateWindowEnd: '05:00',
+      factoryResetDisabled: true,
+      safeBootDisabled: true,
+      timeDateModificationDisabled: true,
+      accountModificationDisabled: true,
     },
     COMPLIANCE: {
       minOsVersion: '',
       maxOsVersion: '',
       deviceEncryptionRequired: true,
       jailbreakDetection: true,
-      antivirusRequired: false,
       healthCheckInterval: 24,
       locationTrackingEnabled: true,
     },
@@ -276,7 +301,7 @@ const PoliciesPage: React.FC = () => {
     setEditingPolicy(null);
   };
 
-  const handleTypeChange = (type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE') => {
+  const handleTypeChange = (type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM') => {
     setFormData({
       ...formData,
       type,
@@ -290,41 +315,36 @@ const PoliciesPage: React.FC = () => {
     let current = newRules;
     
     for (let i = 0; i < keys.length - 1; i++) {
-      if (!current[keys[i]]) current[keys[i]] = {};
-      current = current[keys[i]];
+      const key = keys[i] as string;
+      if (!current[key]) current[key] = {};
+      current = current[key];
     }
     
-    current[keys[keys.length - 1]] = value;
+    current[keys[keys.length - 1] as string] = value;
     setFormData({ ...formData, rules: newRules });
   };
 
   const getPolicyTypeIcon = (type: string) => {
     switch (type) {
-      case 'SECURITY':
-        return <Security />;
-      case 'NETWORK':
-        return <Wifi />;
-      case 'APPLICATION':
-        return <Apps />;
-      case 'COMPLIANCE':
-        return <Assessment />;
-      default:
-        return <Security />;
+      case 'SECURITY': return <Security />;
+      case 'NETWORK': return <Wifi />;
+      case 'APPLICATION': return <Apps />;
+      case 'COMPLIANCE': return <Assessment />;
+      case 'HARDWARE': return <Security />; // can use another icon if imported
+      case 'SYSTEM': return <Assessment />; // can use another icon if imported
+      default: return <Security />;
     }
   };
 
   const getPolicyTypeColor = (type: string) => {
     switch (type) {
-      case 'SECURITY':
-        return 'error';
-      case 'NETWORK':
-        return 'info';
-      case 'APPLICATION':
-        return 'primary';
-      case 'COMPLIANCE':
-        return 'warning';
-      default:
-        return 'default';
+      case 'SECURITY': return 'error';
+      case 'NETWORK': return 'info';
+      case 'APPLICATION': return 'primary';
+      case 'COMPLIANCE': return 'warning';
+      case 'HARDWARE': return 'error';
+      case 'SYSTEM': return 'primary';
+      default: return 'default';
     }
   };
 
@@ -344,66 +364,36 @@ const PoliciesPage: React.FC = () => {
       {formData.rules.passwordRequired && (
         <>
           <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Minimum Password Length"
-              type="number"
-              value={formData.rules.passwordMinLength}
-              onChange={(e) => handleRuleChange('passwordMinLength', parseInt(e.target.value))}
-            />
+            <TextField fullWidth label="Minimum Password Length" type="number" value={formData.rules.passwordMinLength} onChange={(e) => handleRuleChange('passwordMinLength', parseInt(e.target.value))} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField fullWidth label="Password Expiration (Days)" type="number" value={formData.rules.passwordExpiryDays} onChange={(e) => handleRuleChange('passwordExpiryDays', parseInt(e.target.value))} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField fullWidth label="Prevent Reused Passwords (Last X)" type="number" value={formData.rules.passwordHistoryCount} onChange={(e) => handleRuleChange('passwordHistoryCount', parseInt(e.target.value))} />
           </Grid>
           <Grid item xs={12}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.rules.passwordComplexity}
-                  onChange={(e) => handleRuleChange('passwordComplexity', e.target.checked)}
-                />
-              }
-              label="Require Complex Password"
-            />
+            <FormControlLabel control={<Switch checked={formData.rules.passwordComplexity} onChange={(e) => handleRuleChange('passwordComplexity', e.target.checked)} />} label="Require Complex Password" />
           </Grid>
         </>
       )}
       <Grid item xs={12}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={formData.rules.biometricEnabled}
-              onChange={(e) => handleRuleChange('biometricEnabled', e.target.checked)}
-            />
-          }
-          label="Enable Biometric Authentication"
-        />
+        <FormControlLabel control={<Switch checked={formData.rules.biometricEnabled} onChange={(e) => handleRuleChange('biometricEnabled', e.target.checked)} />} label="Enable Biometric Authentication" />
       </Grid>
       <Grid item xs={12}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={formData.rules.encryptionRequired}
-              onChange={(e) => handleRuleChange('encryptionRequired', e.target.checked)}
-            />
-          }
-          label="Device Encryption Required"
-        />
+        <FormControlLabel control={<Switch checked={formData.rules.trustAgentsAllowed} onChange={(e) => handleRuleChange('trustAgentsAllowed', e.target.checked)} />} label="Enable Trust Agents (Smart Lock)" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.encryptionRequired} onChange={(e) => handleRuleChange('encryptionRequired', e.target.checked)} />} label="Device Encryption Required" />
       </Grid>
       <Grid item xs={12} sm={6}>
-        <TextField
-          fullWidth
-          label="Screen Lock Timeout (minutes)"
-          type="number"
-          value={formData.rules.screenLockTimeout}
-          onChange={(e) => handleRuleChange('screenLockTimeout', parseInt(e.target.value))}
-        />
+        <TextField fullWidth label="Screen Lock Timeout (minutes)" type="number" value={formData.rules.screenLockTimeout} onChange={(e) => handleRuleChange('screenLockTimeout', parseInt(e.target.value))} />
       </Grid>
       <Grid item xs={12} sm={6}>
-        <TextField
-          fullWidth
-          label="Max Failed Login Attempts"
-          type="number"
-          value={formData.rules.maxFailedAttempts}
-          onChange={(e) => handleRuleChange('maxFailedAttempts', parseInt(e.target.value))}
-        />
+        <TextField fullWidth label="Max Failed Login Attempts" type="number" value={formData.rules.maxFailedAttempts} onChange={(e) => handleRuleChange('maxFailedAttempts', parseInt(e.target.value))} />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.autoWipeOnFailure} onChange={(e) => handleRuleChange('autoWipeOnFailure', e.target.checked)} />} label="Auto-Wipe Data After Max Failed Attempts" />
       </Grid>
     </Grid>
   );
@@ -455,15 +445,16 @@ const PoliciesPage: React.FC = () => {
         />
       </Grid>
       <Grid item xs={12}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={formData.rules.hotspotEnabled}
-              onChange={(e) => handleRuleChange('hotspotEnabled', e.target.checked)}
-            />
-          }
-          label="Allow Mobile Hotspot"
-        />
+        <FormControlLabel control={<Switch checked={formData.rules.hotspotEnabled} onChange={(e) => handleRuleChange('hotspotEnabled', e.target.checked)} />} label="Allow Mobile Hotspot" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.nfcDisabled} onChange={(e) => handleRuleChange('nfcDisabled', e.target.checked)} />} label="Disable NFC Features" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.airplaneModeDisabled} onChange={(e) => handleRuleChange('airplaneModeDisabled', e.target.checked)} />} label="Disable Airplane Mode" />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField fullWidth label="Global Proxy URL (Optional)" value={formData.rules.globalProxyUrl || ''} onChange={(e) => handleRuleChange('globalProxyUrl', e.target.value)} placeholder="e.g., proxy.company.com:8080" />
       </Grid>
     </Grid>
   );
@@ -514,15 +505,73 @@ const PoliciesPage: React.FC = () => {
         />
       </Grid>
       <Grid item xs={12}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={formData.rules.appUpdateRequired}
-              onChange={(e) => handleRuleChange('appUpdateRequired', e.target.checked)}
-            />
-          }
-          label="Require App Updates"
-        />
+        <FormControlLabel control={<Switch checked={formData.rules.appUpdateRequired} onChange={(e) => handleRuleChange('appUpdateRequired', e.target.checked)} />} label="Require App Updates" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.clipboardDlpEnabled} onChange={(e) => handleRuleChange('clipboardDlpEnabled', e.target.checked)} />} label="Block Clipboard Cross-Profile (DLP)" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.preventAppDataClearing} onChange={(e) => handleRuleChange('preventAppDataClearing', e.target.checked)} />} label="Prevent Users Clearing App Data" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.safeSearchEnforced} onChange={(e) => handleRuleChange('safeSearchEnforced', e.target.checked)} />} label="Enforce Browser Safe Search" />
+      </Grid>
+    </Grid>
+  );
+
+  const renderHardwareRules = () => (
+    <Grid container spacing={2}>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.cameraDisabled} onChange={(e) => handleRuleChange('cameraDisabled', e.target.checked)} />} label="Disable Camera Globally" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.usbFileTransferDisabled} onChange={(e) => handleRuleChange('usbFileTransferDisabled', e.target.checked)} />} label="Disable USB File Transfer (MTP)" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.externalStorageDisabled} onChange={(e) => handleRuleChange('externalStorageDisabled', e.target.checked)} />} label="Disable External Storage (SD Card)" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.screenCaptureDisabled} onChange={(e) => handleRuleChange('screenCaptureDisabled', e.target.checked)} />} label="Disable Screenshots / Screen Recording" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.microphoneDisabled} onChange={(e) => handleRuleChange('microphoneDisabled', e.target.checked)} />} label="Disable Microphone" />
+      </Grid>
+    </Grid>
+  );
+
+  const renderSystemRules = () => (
+    <Grid container spacing={2}>
+      <Grid item xs={12}>
+        <FormControl fullWidth>
+          <InputLabel>System Update Policy</InputLabel>
+          <Select value={formData.rules.systemUpdatePolicy || 'AUTOMATIC'} onChange={(e) => handleRuleChange('systemUpdatePolicy', e.target.value)} label="System Update Policy">
+            <MenuItem value="AUTOMATIC">Automatic (Install Immediately)</MenuItem>
+            <MenuItem value="POSTPONED">Postponed (Delay 30 Days)</MenuItem>
+            <MenuItem value="WINDOWED">Windowed (Time Restricted)</MenuItem>
+          </Select>
+        </FormControl>
+      </Grid>
+      {formData.rules.systemUpdatePolicy === 'WINDOWED' && (
+        <>
+          <Grid item xs={12} sm={6}>
+            <TextField fullWidth label="Update Window Start" value={formData.rules.updateWindowStart} onChange={(e) => handleRuleChange('updateWindowStart', e.target.value)} placeholder="02:00" />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField fullWidth label="Update Window End" value={formData.rules.updateWindowEnd} onChange={(e) => handleRuleChange('updateWindowEnd', e.target.value)} placeholder="05:00" />
+          </Grid>
+        </>
+      )}
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.factoryResetDisabled} onChange={(e) => handleRuleChange('factoryResetDisabled', e.target.checked)} />} label="Disable Factory Reset" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.safeBootDisabled} onChange={(e) => handleRuleChange('safeBootDisabled', e.target.checked)} />} label="Disable Safe Boot Mode" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.timeDateModificationDisabled} onChange={(e) => handleRuleChange('timeDateModificationDisabled', e.target.checked)} />} label="Disable User Time/Date Changes" />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControlLabel control={<Switch checked={formData.rules.accountModificationDisabled} onChange={(e) => handleRuleChange('accountModificationDisabled', e.target.checked)} />} label="Block Account Modification (Prevents Personal Accounts/FRP)" />
       </Grid>
     </Grid>
   );
@@ -602,6 +651,10 @@ const PoliciesPage: React.FC = () => {
         return renderApplicationRules();
       case 'COMPLIANCE':
         return renderComplianceRules();
+      case 'HARDWARE':
+        return renderHardwareRules();
+      case 'SYSTEM':
+        return renderSystemRules();
       default:
         return null;
     }
@@ -610,9 +663,20 @@ const PoliciesPage: React.FC = () => {
   const canManagePolicies = hasPermission('policies', 'manage');
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          component="h1"
+          sx={{ 
+            fontWeight: 800,
+            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            color: 'transparent',
+            letterSpacing: '-0.02em'
+          }}
+        >
           Policy Management
         </Typography>
         {canManagePolicies && (
@@ -620,6 +684,16 @@ const PoliciesPage: React.FC = () => {
             variant="contained"
             startIcon={<Add />}
             onClick={() => handleOpenDialog()}
+            sx={{ 
+              borderRadius: 2, 
+              textTransform: 'none', 
+              fontWeight: 600,
+              boxShadow: '0 4px 14px 0 rgba(37, 99, 235, 0.25)',
+              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)',
+              }
+            }}
           >
             Create Policy
           </Button>
@@ -632,129 +706,118 @@ const PoliciesPage: React.FC = () => {
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-            <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-              <Tab label="All Policies" />
-              <Tab label="Active" />
-              <Tab label="Inactive" />
-              <Tab label="Compliance" />
-            </Tabs>
-          </Box>
+      <Card sx={{ borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', border: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ px: 3, pt: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={(_, newValue) => setTabValue(newValue)}
+            sx={{
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                minWidth: 'auto',
+                px: 3,
+                py: 1.5,
+              }
+            }}
+          >
+            <Tab label="All Policies" />
+            <Tab label="Active" />
+            <Tab label="Inactive" />
+            <Tab label="Compliance" />
+          </Tabs>
+        </Box>
+        <Box sx={{ p: 0 }}>
 
           <TabPanel value={tabValue} index={0}>
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, gap: 2 }}>
+                <CircularProgress size={32} thickness={4} />
+                <Typography variant="body2" color="text.secondary">Loading policies...</Typography>
               </Box>
             ) : (
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
+              <TableContainer sx={{ overflowX: 'auto', borderRadius: 0 }}>
+                <Table sx={{ minWidth: 800 }}>
+                  <TableHead sx={{ backgroundColor: '#fafafa', borderBottom: '2px solid', borderColor: 'divider' }}>
                     <TableRow>
-                      <TableCell>Policy</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Targets</TableCell>
-                      <TableCell>Compliance</TableCell>
-                      <TableCell>Updated</TableCell>
-                      {canManagePolicies && <TableCell>Actions</TableCell>}
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Policy</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Targets</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Compliance</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Updated</TableCell>
+                      {canManagePolicies && <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Actions</TableCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {policies.map((policy) => (
                       <TableRow key={policy.id} hover>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Box>
-                            <Typography variant="subtitle2">{policy.name}</Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a' }}>{policy.name}</Typography>
+                            <Typography variant="caption" sx={{ color: '#64748b' }}>
                               {policy.description}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          <Chip
-                            icon={getPolicyTypeIcon(policy.type)}
-                            label={policy.type}
-                            color={getPolicyTypeColor(policy.type) as any}
-                            size="small"
-                          />
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: getPolicyTypeColor(policy.type) === 'error' ? '#ef4444' : getPolicyTypeColor(policy.type) === 'info' ? '#3b82f6' : getPolicyTypeColor(policy.type) === 'primary' ? '#8b5cf6' : '#f59e0b' }}>
+                            {getPolicyTypeIcon(policy.type)}
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{policy.type}</Typography>
+                          </Box>
                         </TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Chip
                             label={policy.isActive ? 'Active' : 'Inactive'}
                             color={policy.isActive ? 'success' : 'default'}
                             size="small"
+                            sx={{ fontWeight: 600, borderRadius: 1, height: 24, fontSize: '0.7rem' }}
                           />
                         </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.secondary' }}>
                             {policy.targetDevices.length + policy.targetGroups.length} targets
                           </Typography>
                         </TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2">
-                              {policy.complianceRate}%
-                            </Typography>
-                            <Box
-                              sx={{
-                                width: 60,
-                                height: 4,
-                                backgroundColor: 'grey.300',
-                                borderRadius: 2,
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  width: `${policy.complianceRate}%`,
-                                  height: '100%',
-                                  backgroundColor: policy.complianceRate > 80 ? 'success.main' : 'warning.main',
-                                  borderRadius: 2,
-                                }}
-                              />
+                            <Box sx={{ flexGrow: 1, height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                              <Box sx={{ width: `${policy.complianceRate}%`, height: '100%', backgroundColor: policy.complianceRate > 80 ? '#10b981' : '#f59e0b', borderRadius: 3 }} />
                             </Box>
+                            <Typography variant="caption" sx={{ fontWeight: 600, minWidth: 32 }}>{policy.complianceRate}%</Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          {new Date(policy.updatedAt).toLocaleDateString()}
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            {new Date(policy.updatedAt).toLocaleDateString()}
+                          </Typography>
                         </TableCell>
                         {canManagePolicies && (
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
+                          <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }} align="right">
+                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                               <Tooltip title="View Policy">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleOpenDialog(policy)}
-                                >
-                                  <Visibility />
+                                <IconButton size="small" onClick={() => handleOpenDialog(policy)} sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main', bgcolor: 'primary.50' } }}>
+                                  <Visibility fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Edit Policy">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleOpenDialog(policy)}
-                                >
-                                  <Edit />
+                                <IconButton size="small" onClick={() => handleOpenDialog(policy)} sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main', bgcolor: 'warning.50' } }}>
+                                  <Edit fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title={policy.isActive ? 'Deactivate' : 'Activate'}>
                                 <IconButton
                                   size="small"
                                   onClick={() => handleToggleActive(policy.id, policy.isActive)}
-                                  color={policy.isActive ? 'warning' : 'success'}
+                                  sx={{ color: policy.isActive ? '#f59e0b' : '#10b981', '&:hover': { bgcolor: policy.isActive ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)' } }}
                                 >
-                                  {policy.isActive ? <Pause /> : <PlayArrow />}
+                                  {policy.isActive ? <Pause fontSize="small" /> : <PlayArrow fontSize="small" />}
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Delete Policy">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleDeletePolicy(policy.id)}
-                                  color="error"
-                                >
-                                  <Delete />
+                                <IconButton size="small" onClick={() => handleDeletePolicy(policy.id)} sx={{ color: 'text.secondary', '&:hover': { color: 'error.main', bgcolor: 'error.50' } }}>
+                                  <Delete fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                             </Box>
@@ -793,17 +856,17 @@ const PoliciesPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <Typography variant="body1">Active policies view</Typography>
+            <Typography variant="body2" color="text.secondary">Active policies view</Typography>
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            <Typography variant="body1">Inactive policies view</Typography>
+            <Typography variant="body2" color="text.secondary">Inactive policies view</Typography>
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <Typography variant="body1">Compliance monitoring dashboard</Typography>
+            <Typography variant="body2" color="text.secondary">Compliance monitoring dashboard</Typography>
           </TabPanel>
-        </CardContent>
+        </Box>
       </Card>
 
       {/* Create/Edit Policy Dialog */}
@@ -833,6 +896,8 @@ const PoliciesPage: React.FC = () => {
                   <MenuItem value="NETWORK">Network</MenuItem>
                   <MenuItem value="APPLICATION">Application</MenuItem>
                   <MenuItem value="COMPLIANCE">Compliance</MenuItem>
+                  <MenuItem value="HARDWARE">Hardware</MenuItem>
+                  <MenuItem value="SYSTEM">System Updates & Restrictions</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

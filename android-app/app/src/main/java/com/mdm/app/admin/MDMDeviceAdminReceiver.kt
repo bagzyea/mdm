@@ -75,8 +75,32 @@ class MDMDeviceAdminReceiver : DeviceAdminReceiver() {
         super.onProfileProvisioningComplete(context, intent)
         Log.i(TAG, "Profile provisioning complete")
         
+        var profileId: String? = null
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            val extras = intent.getParcelableExtra<android.os.PersistableBundle>(
+                android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE
+            )
+            profileId = extras?.getString("provisioning_profile_id")
+            
+            if (profileId != null) {
+                Log.i(TAG, "Received Zero-Touch Provisioning Profile ID: $profileId")
+                // Future Implementation: Enqueue a worker to download and install
+                // the Android APKs silently over the air.
+                // ProvisioningWorker.start(context, profileId)
+            }
+            
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val componentName = android.content.ComponentName(context, MDMDeviceAdminReceiver::class.java)
+            try {
+                dpm.setProfileEnabled(componentName)
+            } catch (e: Exception) {
+                Log.w(TAG, "Not a profile owner, likely device owner mode", e)
+            }
+        }
+        
         // Notify server that provisioning is complete
         val mdmService = MDMService(context)
+        // mdmService.notifyProvisioningComplete(profileId)
         mdmService.notifyProvisioningComplete()
     }
     

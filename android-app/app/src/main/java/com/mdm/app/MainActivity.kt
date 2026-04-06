@@ -17,7 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.textfield.TextInputEditText
+import android.widget.EditText
 import com.mdm.app.admin.MDMDeviceAdminReceiver
 import com.mdm.app.config.AppConfig
 import com.mdm.app.services.MDMService
@@ -25,6 +25,9 @@ import com.mdm.app.utils.PreferenceManager
 import com.mdm.app.websocket.CommandListener
 import com.mdm.app.databinding.ActivityMainBinding
 import com.mdm.app.models.DeviceHealthMetrics
+import com.google.gson.Gson
+import com.mdm.app.models.DevicePolicy
+import com.mdm.app.policy.PolicyEngine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -59,14 +62,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var preferenceManager: PreferenceManager
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var deviceAdminComponent: ComponentName
+    private lateinit var policyEngine: PolicyEngine
     private var healthMetricsRefreshJob: Job? = null
     
     // UI Components
     private lateinit var statusIndicator: View
     private lateinit var statusTextView: TextView
     private lateinit var statusProgressBar: LinearProgressIndicator
-    private lateinit var serverUrlEditText: TextInputEditText
-    private lateinit var enrollmentCodeEditText: TextInputEditText
+    private lateinit var serverUrlEditText: EditText
+    private lateinit var enrollmentCodeEditText: EditText
     private lateinit var websocketStatusText: TextView
 
     // Device Health Metrics UI
@@ -102,6 +106,9 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
         updateUI()
         setupObservers()
+        
+        // Start fallback 4-hour background command polling
+        com.mdm.app.services.CommandPollingWorker.schedulePeriodicPolling(this)
     }
     
     private fun initializeComponents() {
@@ -109,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         preferenceManager = PreferenceManager.getInstance(this)
         devicePolicyManager = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
         deviceAdminComponent = ComponentName(this, MDMDeviceAdminReceiver::class.java)
+        policyEngine = PolicyEngine(this)
 
         // Register as the CommandListener so WebSocket commands reach handleServerCommand()
         mdmService.setCommandListener(object : CommandListener {
@@ -541,6 +549,7 @@ class MainActivity : AppCompatActivity() {
     private suspend fun executeServerSyncSettings() {
         try {
             mdmService.updatePolicies()
+            applyEnforcedPolicies()
             updateStatus("Settings synchronized by administrator", StatusType.SUCCESS)
             showSnackbar("Device settings synced")
         } catch (e: Exception) {
@@ -577,6 +586,11 @@ class MainActivity : AppCompatActivity() {
                     "LOCATE_DEVICE", "locate_device" -> {
                         Log.d(TAG, "Executing LOCATE_DEVICE command")
                         executeServerLocateDevice(payload)
+                    }
+                    "APPLY_POLICY", "apply_policy", "UPDATE_POLICY", "update_policy", "REMOVE_POLICY", "remove_policy" -> {
+                        Log.d(TAG, "Executing POLICY modification command")
+                        mdmService.updatePolicies()
+                        applyEnforcedPolicies()
                     }
                     "SYNC_SETTINGS", "sync_settings" -> {
                         Log.d(TAG, "Executing SYNC_SETTINGS command")
@@ -649,10 +663,16 @@ class MainActivity : AppCompatActivity() {
             try {
                 val success = mdmService.updatePolicies()
                 if (success) {
-                    updateStatus("Policies updated successfully", StatusType.SUCCESS)
-                    showSnackbar("Policies updated successfully!")
+                    val applied = applyEnforcedPolicies()
+                    if (applied) {
+                        updateStatus("Policies enforced successfully", StatusType.SUCCESS)
+                        showSnackbar("Policies updated and enforced!")
+                    } else {
+                        updateStatus("Policies fetched, but some enforcements failed", StatusType.ERROR)
+                        showSnackbar("Policies fetched, but some enforcements failed")
+                    }
                 } else {
-                    updateStatus("Failed to update policies", StatusType.ERROR)
+                    updateStatus("Failed to update policies from server", StatusType.ERROR)
                     showSnackbar("Failed to update policies", Snackbar.LENGTH_LONG)
                 }
             } catch (e: Exception) {
@@ -662,6 +682,35 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 showProgress(false)
             }
+        }
+    }
+    
+    private suspend fun applyEnforcedPolicies(): Boolean {
+        return try {
+            val policyStrings = mdmService.getPolicies()
+            val gson = Gson()
+            val devicePolicies = mutableListOf<DevicePolicy>()
+            
+            for (policyStr in policyStrings) {
+                try {
+                    val pol = gson.fromJson(policyStr, DevicePolicy::class.java)
+                    devicePolicies.add(pol)
+                } catch(e: Exception) {
+                    Log.e(TAG, "Failed to parse policy JSON", e)
+                }
+            }
+            
+            if (devicePolicies.isNotEmpty()) {
+                val result = policyEngine.applyPolicies(devicePolicies)
+                Log.i(TAG, "Policy engine applied ${devicePolicies.size} policies. Success: ${result.success}")
+                result.success
+            } else {
+                Log.i(TAG, "No policies available to apply.")
+                true
+            }
+        } catch(e: Exception) {
+            Log.e(TAG, "Failed to apply policies", e)
+            false
         }
     }
     

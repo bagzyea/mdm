@@ -346,45 +346,101 @@ const DevicesPage: React.FC = () => {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography 
-          variant="h2" 
-          component="h1"
-          sx={{ 
-            mb: 1,
-            background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            color: 'transparent',
-          }}
-        >
-          UBOS Device Management
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-          Monitor and manage all enrolled devices in your UBOS MDM system
-        </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box /> {/* Empty box for spacing */}
-          {canManageDevices && (
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={<Refresh />}
-                onClick={fetchDevices}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<Smartphone />}
-                onClick={() => handleOpenDialog('enroll')}
-              >
-                Enroll Device
-              </Button>
-            </Box>
-          )}
+      <Box sx={{ mb: 5, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 3 }}>
+        <Box>
+          <Typography 
+            variant="h4" 
+            component="h1"
+            sx={{ 
+              fontWeight: 800,
+              mb: 1,
+              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              color: 'transparent',
+              letterSpacing: '-0.02em'
+            }}
+          >
+            Device Fleet
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+            Monitor and manage your enrolled endpoints in real-time
+          </Typography>
         </Box>
+        {canManageDevices && (
+          <Box sx={{ display: 'flex', gap: 2 }}>
+             <Button
+              variant="outlined"
+              color="inherit"
+              startIcon={<Refresh fontSize="small" />}
+              onClick={() => fetchDevices()}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none', 
+                fontWeight: 600,
+                borderColor: 'divider',
+                '&:hover': { backgroundColor: 'action.hover' }
+              }}
+            >
+              Refresh
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Smartphone />}
+              onClick={() => handleOpenDialog('enroll')}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none', 
+                fontWeight: 600,
+                boxShadow: '0 4px 14px 0 rgba(37, 99, 235, 0.25)',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)',
+                }
+              }}
+            >
+              Enroll Device
+            </Button>
+          </Box>
+        )}
       </Box>
+
+      {/* Top Metrics Cards */}
+      <Grid container spacing={3} sx={{ mb: 5 }}>
+        {[
+          { label: 'Total Devices', value: totalCount, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+          { label: 'Active Right Now', value: devices.filter(d => d.isActive).length, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+          { label: 'Suspended/Inactive', value: devices.filter(d => !d.isActive && d.status !== 'LOST').length, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+          { label: 'Lost or Wiped', value: devices.filter(d => d.status === 'LOST').length, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' }
+        ].map((stat, i) => (
+          <Grid item xs={12} sm={6} md={3} key={i}>
+            <Card sx={{ 
+              borderRadius: 2, 
+              boxShadow: 'none',
+              border: '1px solid',
+              borderColor: 'divider',
+              background: '#ffffff',
+              transition: 'all 0.2s ease',
+              '&:hover': { 
+                borderColor: stat.color,
+                boxShadow: `0 4px 12px ${stat.bg}` 
+              }
+            }}>
+              <CardContent sx={{ p: 2.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: stat.color, mr: 1, boxShadow: `0 0 6px ${stat.color}` }} />
+                  <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: '0.05em' }}>
+                    {stat.label}
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#0f172a' }}>
+                  {stat.value}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -392,168 +448,123 @@ const DevicesPage: React.FC = () => {
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-            <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-              <Tab label="All Devices" />
-              <Tab label="Active" />
-              <Tab label="Issues" />
-              <Tab label="Groups" />
-            </Tabs>
-          </Box>
+      <Card sx={{ borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', border: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ px: 3, pt: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={(_, newValue) => setTabValue(newValue)}
+            sx={{
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                minWidth: 'auto',
+                px: 3,
+                py: 1.5,
+              }
+            }}
+          >
+            <Tab label="All Devices" />
+            <Tab label="Active" />
+            <Tab label="Issues" />
+            <Tab label="Groups" />
+          </Tabs>
+        </Box>
+        <Box sx={{ p: 0 }}>
 
           <TabPanel value={tabValue} index={0}>
             {loading ? (
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center', 
-                py: 8,
-                gap: 3
-              }}>
-                <CircularProgress size={48} thickness={4} />
-                <Typography variant="body2" color="text.secondary">
-                  Loading devices...
-                </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, gap: 2 }}>
+                <CircularProgress size={32} thickness={4} />
+                <Typography variant="body2" color="text.secondary">Loading endpoint details...</Typography>
               </Box>
             ) : (
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
+              <TableContainer sx={{ overflowX: 'auto', borderRadius: 0, '&::-webkit-scrollbar': { height: 8 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#cbd5e1', borderRadius: 4 } }}>
+                <Table sx={{ minWidth: 800 }}>
+                  <TableHead sx={{ backgroundColor: '#fafafa', borderBottom: '2px solid', borderColor: 'divider' }}>
                     <TableRow>
-                      <TableCell>Device</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Battery</TableCell>
-                      <TableCell>Location</TableCell>
-                      <TableCell>Compliance</TableCell>
-                      <TableCell>Last Seen</TableCell>
-                      <TableCell>Policies</TableCell>
-                      {canManageDevices && <TableCell>Actions</TableCell>}
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Endpoint Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Health</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Location</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Last Sync</TableCell>
+                      {canManageDevices && <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', py: 1.5 }}>Actions</TableCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {devices.map((device) => (
                       <TableRow key={device.id} hover>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Box sx={{
-                              p: 1.5,
-                              borderRadius: 2,
-                              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%)',
-                              border: '1px solid rgba(37, 99, 235, 0.2)',
-                            }}>
-                              <Smartphone sx={{ fontSize: 24, color: 'primary.main' }} />
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Box sx={{ color: device.isActive ? '#10b981' : '#94a3b8' }}>
+                              <Smartphone sx={{ fontSize: 20 }} />
                             </Box>
                             <Box>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a' }}>
                                 {device.deviceName || device.deviceModel}
                               </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  {device.manufacturer}
-                                </Typography>
-                                <Box sx={{ 
-                                  width: 4, 
-                                  height: 4, 
-                                  borderRadius: '50%', 
-                                  backgroundColor: 'grey.400' 
-                                }} />
-                                <Typography variant="caption" color="text.secondary">
-                                  {device.osVersion}
-                                </Typography>
-                              </Box>
+                              <Typography variant="caption" sx={{ color: '#64748b' }}>
+                                {device.manufacturer || 'Unknown'} • Android {device.osVersion || 'N/A'}
+                              </Typography>
                             </Box>
                           </Box>
                         </TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Chip
                             label={device.status}
                             color={getStatusColor(device.status) as any}
                             size="small"
+                            sx={{ fontWeight: 600, borderRadius: 1, height: 24, fontSize: '0.7rem' }}
                           />
                         </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Box sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              px: 1.5,
-                              py: 0.5,
-                              borderRadius: 2,
-                              backgroundColor: device.batteryLevel < 20 ? 'rgba(220, 38, 38, 0.1)' : 
-                                             device.batteryLevel < 50 ? 'rgba(217, 119, 6, 0.1)' : 
-                                             'rgba(5, 150, 105, 0.1)',
-                              border: `1px solid ${device.batteryLevel < 20 ? 'rgba(220, 38, 38, 0.2)' : 
-                                                  device.batteryLevel < 50 ? 'rgba(217, 119, 6, 0.2)' : 
-                                                  'rgba(5, 150, 105, 0.2)'}`
-                            }}>
-                              <Battery90 sx={{
-                                fontSize: 20,
-                                color: device.batteryLevel < 20 ? 'error.main' : 
-                                       device.batteryLevel < 50 ? 'warning.main' : 
-                                       'success.main'
-                              }} />
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                {device.batteryLevel}%
-                              </Typography>
-                              {device.isCharging && (
-                                <Typography variant="caption" sx={{ color: 'primary.main' }}>
-                                  ⚡
-                                </Typography>
-                              )}
-                            </Box>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Battery90 sx={{ fontSize: 16, color: device.batteryLevel < 20 ? '#ef4444' : device.batteryLevel < 50 ? '#f59e0b' : '#10b981' }} />
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                              {device.batteryLevel}% {device.isCharging ? '⚡' : ''}
+                            </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           {device.latitude && device.longitude ? (
                             <Tooltip title={`${device.latitude}, ${device.longitude}`}>
-                              <IconButton size="small">
-                                <LocationOn />
-                              </IconButton>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                                <LocationOn sx={{ fontSize: 16 }} />
+                                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                  Logged
+                                </Typography>
+                              </Box>
                             </Tooltip>
                           ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              Unknown
-                            </Typography>
+                            <Typography variant="caption" color="text.secondary">--</Typography>
                           )}
                         </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={device.complianceStatus.replace('_', ' ')}
-                            color={getComplianceColor(device.complianceStatus) as any}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
+                        <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.secondary' }}>
                             {formatLastSeen(device.lastSeen)}
                           </Typography>
                         </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {device.assignedPolicies.length} policies
-                          </Typography>
-                        </TableCell>
                         {canManageDevices && (
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Tooltip title="View Details">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleOpenDialog('details', device)}
-                                >
-                                  <Visibility />
+                          <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }} align="right">
+                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                              <Tooltip title="Device Details">
+                                <IconButton size="small" onClick={() => handleOpenDialog('details', device)} sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main', bgcolor: 'primary.50' } }}>
+                                  <Visibility fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                              <IconButton
-                                size="small"
-                                onClick={(e) => handleMenuClick(e, device)}
-                              >
-                                <MoreVert />
-                              </IconButton>
+                              <Tooltip title="Send Command">
+                                <IconButton size="small" onClick={() => handleOpenDialog('sendCommand', device)} sx={{ color: 'text.secondary', '&:hover': { color: 'secondary.main', bgcolor: 'secondary.50' } }}>
+                                  <Terminal fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="More Actions">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => handleMenuClick(e, device)}
+                                >
+                                  <MoreVert fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                             </Box>
                           </TableCell>
                         )}
@@ -634,7 +645,7 @@ const DevicesPage: React.FC = () => {
           <TabPanel value={tabValue} index={3}>
             <Typography variant="body1">Device groups and bulk management</Typography>
           </TabPanel>
-        </CardContent>
+        </Box>
       </Card>
 
       {/* Context Menu */}

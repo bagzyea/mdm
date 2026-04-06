@@ -257,6 +257,8 @@ enum PolicyType {
   NETWORK
   APPLICATION
   COMPLIANCE
+  HARDWARE
+  SYSTEM
 }
 
 enum CommandStatus {

@@ -15,7 +15,7 @@ export const createPolicySchema = Joi.object({
     .allow(''),
   
   type: Joi.string()
-    .valid('SECURITY', 'CONFIGURATION', 'COMPLIANCE', 'APPLICATION')
+    .valid('SECURITY', 'NETWORK', 'APPLICATION', 'COMPLIANCE', 'HARDWARE', 'SYSTEM')
     .required(),
   
   settings: Joi.object({
@@ -102,7 +102,7 @@ export const policyQuerySchema = Joi.object({
     .default(20),
   
   type: Joi.string()
-    .valid('SECURITY', 'CONFIGURATION', 'COMPLIANCE', 'APPLICATION'),
+    .valid('SECURITY', 'NETWORK', 'APPLICATION', 'COMPLIANCE', 'HARDWARE', 'SYSTEM'),
   
   isActive: Joi.boolean(),
   

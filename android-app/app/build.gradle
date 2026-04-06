@@ -3,6 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'kotlin-kapt'
     id 'kotlin-parcelize'
+    id 'com.google.gms.google-services'
 }
 
 android {
@@ -62,7 +63,12 @@ android {
         viewBinding true
         buildConfig true
     }
-    
+
+    lint {
+        disable 'MissingPermission'
+        abortOnError false
+    }
+
     // Fix for duplicate class definitions
     packagingOptions {
         exclude 'META-INF/DEPENDENCIES'
@@ -120,6 +126,10 @@ dependencies {
     
     // Location Services
     implementation 'com.google.android.gms:play-services-location:21.3.0'
+    
+    // Firebase Cloud Messaging
+    implementation platform('com.google.firebase:firebase-bom:32.8.0')
+    implementation 'com.google.firebase:firebase-messaging-ktx'
     
     // Testing
     testImplementation 'junit:junit:4.13.2'

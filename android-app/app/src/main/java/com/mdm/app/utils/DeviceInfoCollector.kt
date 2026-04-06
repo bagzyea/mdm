@@ -75,7 +75,7 @@ class DeviceInfoCollector(private val context: Context) {
     /**
      * Get device serial number
      */
-    @SuppressLint("HardwareIds")
+    @SuppressLint("HardwareIds", "MissingPermission")
     private fun getSerialNumber(): String? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

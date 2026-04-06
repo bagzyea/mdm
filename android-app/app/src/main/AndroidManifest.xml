@@ -136,6 +136,15 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+            
+        <!-- Firebase Messaging Service -->
+        <service
+            android:name=".services.MDMFirebaseMessagingService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         
     </application>
 
