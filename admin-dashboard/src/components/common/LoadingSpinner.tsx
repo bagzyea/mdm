@@ -43,7 +43,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   const [dots, setDots] = useState('');
   const [iconIndex, setIconIndex] = useState(0);
   const icons = [Security, AdminPanelSettings, Devices];
-  const CurrentIcon = icons[iconIndex];
+  const CurrentIcon = icons[iconIndex] || Security;
 
   useEffect(() => {
     const dotsInterval = setInterval(() => {

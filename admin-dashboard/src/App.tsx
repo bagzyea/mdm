@@ -21,6 +21,7 @@ import { ProvisioningSessionsPage } from './pages/provisioning/ProvisioningSessi
 import { FieldConfigurationsPage } from './pages/provisioning/FieldConfigurationsPage';
 import { BulkDeploymentPage } from './pages/provisioning/BulkDeploymentPage';
 import { DeviceModelRecognitionPage } from './pages/provisioning/DeviceModelRecognitionPage';
+import AppVaultPage from './pages/app-vault/AppVaultPage';
 import { NotificationProvider } from './contexts/NotificationContext';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
@@ -353,7 +354,7 @@ const queryClient = new QueryClient({
       },
       refetchOnWindowFocus: false,
       staleTime: 2 * 60 * 1000, // 2 minutes (reduced for better refresh)
-      gcTime: 5 * 60 * 1000, // 5 minutes cache (gcTime = renamed cacheTime in React Query v5)
+      cacheTime: 5 * 60 * 1000, // 5 minutes cache
       refetchOnMount: true, // Always refetch on mount
       refetchOnReconnect: true, // Refetch when network reconnects
     },
@@ -433,6 +434,7 @@ const AppRoutes: React.FC = () => {
                 } />
                 <Route path="policies/*" element={<PoliciesPage />} />
                 <Route path="commands/*" element={<CommandsPage />} />
+                <Route path="app-vault/*" element={<AppVaultPage />} />
                 <Route path="users/*" element={<UsersPage />} />
                 <Route path="settings/*" element={<SettingsPage />} />
               </Routes>

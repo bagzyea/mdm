@@ -604,11 +604,27 @@ export interface SessionStats {
 }
 
 // Request/Response interfaces
+export interface SelectedAPK {
+  apk: {
+    packageName: string;
+    appName: string;
+    version: string;
+    apkUrl: string;
+    apkHash: string;
+    permissions: string[];
+    filePath: string;
+    fileSize?: number;
+  };
+  installOrder: number;
+  isRequired: boolean;
+}
+
 export interface CreateProvisioningProfileRequest {
   name: string;
   description?: string;
   deviceModels: string[];
   applications: Omit<ProvisioningApp, 'id' | 'profileId'>[];
+  selectedAPKs?: SelectedAPK[];
   networkConfig?: APNConfiguration;
   securityConfig?: ProvisioningSecurityConfig;
   filePackages: Omit<FilePackage, 'id' | 'profileId'>[];

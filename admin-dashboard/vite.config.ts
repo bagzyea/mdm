@@ -14,6 +14,7 @@ export default defineConfig({
     port: 5000,
     host: '0.0.0.0', // Allow external connections in Docker
     strictPort: true,
+    allowedHosts: true, // Allow any host header (needed in Docker)
     proxy: {
       '/api': {
         target: 'http://mdm-backend:5001', // Use Docker service name

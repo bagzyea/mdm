@@ -34,7 +34,11 @@ import {
   Checkbox,
   FormGroup,
   FormControlLabel,
+  Select,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Smartphone,
   LocationOn,
@@ -51,7 +55,8 @@ import {
   Map as MapIcon,
 } from '@mui/icons-material';
 import { useAuthContext } from '../../contexts/AuthContext';
-import { apiService } from '../../services/api';
+import { apiService, provisioningService } from '../../services/api';
+import { ProvisioningProfile } from '../../types';
 
 interface Device {
   id: string;
@@ -106,6 +111,13 @@ const DevicesPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Zero-Touch Provisioning State
+  const [profiles, setProfiles] = useState<ProvisioningProfile[]>([]);
+  const [enrollmentProfileId, setEnrollmentProfileId] = useState<string>('');
+  const [wifiSsid, setWifiSsid] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [apkUrl, setApkUrl] = useState(window.location.origin + '/api/v1/mdm-agent.apk');
 
   const fetchDevices = async (pageNum?: number, limit?: number) => {
     try {
@@ -279,7 +291,12 @@ const DevicesPage: React.FC = () => {
     setOpenDialog(true);
 
     if (type === 'enroll') {
-      generateEnrollmentCode();
+      try {
+        const response = await provisioningService.getProfiles();
+        setProfiles(response);
+      } catch (err) {
+        console.error('Failed to fetch profiles:', err);
+      }
     } else if (type === 'assign') {
       // Fetch available policies
       try {
@@ -340,6 +357,24 @@ const DevicesPage: React.FC = () => {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${diffDays}d ago`;
+  };
+
+  const generateProvisioningJson = () => {
+    if (!enrollmentProfileId) return '';
+
+    const payload = {
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.mdm.app/com.mdm.app.admin.MDMDeviceAdminReceiver",
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "",
+      "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": apkUrl,
+      "android.app.extra.PROVISIONING_WIFI_SSID": wifiSsid,
+      "android.app.extra.PROVISIONING_WIFI_PASSWORD": wifiPassword,
+      "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+      "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true,
+      "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
+        "provisioning_profile_id": enrollmentProfileId
+      }
+    };
+    return JSON.stringify(payload);
   };
 
   const canManageDevices = hasPermission('devices', 'create') || hasPermission('devices', 'update');
@@ -695,30 +730,92 @@ const DevicesPage: React.FC = () => {
         </MenuItem>
       </Menu>
 
-      {/* Enrollment Dialog */}
-      <Dialog open={openDialog && dialogType === 'enroll'} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Device Enrollment</DialogTitle>
+      {/* Enrollment Dialog (Zero-Touch QR) */}
+      <Dialog open={openDialog && dialogType === 'enroll'} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Zero-Touch Device Enrollment</DialogTitle>
         <DialogContent>
-          <Typography variant="body1" gutterBottom>
-            To enroll a new device, use the enrollment code below in the UBOS MDM Android app:
-          </Typography>
-          <TextField
-            fullWidth
-            label="Enrollment Code"
-            value={enrollmentCode}
-            variant="outlined"
-            InputProps={{ readOnly: true }}
-            sx={{ mt: 2, mb: 2 }}
-          />
-          <Alert severity="info">
-            This code expires in 1 hour. Install the UBOS MDM app on the target device and enter this code during setup.
-          </Alert>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body1" paragraph color="text.secondary">
+              To enroll a new device, factory reset the Android device, tap the "Hello" or "Welcome" screen 6 times rapidly, and scan the generated QR code below.
+            </Typography>
+            
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>Enrollment Configuration</Typography>
+                
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Provisioning Profile</InputLabel>
+                  <Select
+                    value={enrollmentProfileId}
+                    onChange={(e) => setEnrollmentProfileId(e.target.value)}
+                    label="Provisioning Profile"
+                  >
+                    {profiles.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  label="Local Wi-Fi SSID"
+                  value={wifiSsid}
+                  onChange={(e) => setWifiSsid(e.target.value)}
+                  placeholder="Company Network"
+                  sx={{ mb: 2 }}
+                />
+                
+                <TextField
+                  fullWidth
+                  label="Local Wi-Fi Password"
+                  type="password"
+                  value={wifiPassword}
+                  onChange={(e) => setWifiPassword(e.target.value)}
+                  placeholder="Network Password"
+                  sx={{ mb: 2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Agent Download URL"
+                  value={apkUrl}
+                  onChange={(e) => setApkUrl(e.target.value)}
+                  sx={{ mb: 2 }}
+                  helperText="The public URL where the Android MDM Agent APK is hosted"
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Paper elevation={3} sx={{ p: 4, display: 'inline-block', bgcolor: 'white', borderRadius: 4 }}>
+                  {enrollmentProfileId && wifiSsid && apkUrl ? (
+                    <QRCodeSVG 
+                      value={generateProvisioningJson()} 
+                      size={240}
+                      level="M"
+                      includeMargin={true}
+                    />
+                  ) : (
+                    <Box sx={{ width: 240, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #cbd5e1', borderRadius: 2 }}>
+                      <Typography color="text.secondary" align="center" variant="body2" sx={{ px: 2 }}>
+                        Select a profile and provide Wi-Fi credentials to generate the QR payload
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+                {enrollmentProfileId && (
+                  <Chip 
+                    label="Ready to Scan" 
+                    color="success" 
+                    variant="outlined" 
+                    sx={{ mt: 3, fontWeight: 'bold' }} 
+                  />
+                )}
+              </Grid>
+            </Grid>
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Close</Button>
-          <Button onClick={generateEnrollmentCode} variant="contained">
-            Generate New Code
-          </Button>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={handleCloseDialog} variant="text" color="inherit">Cancel</Button>
         </DialogActions>
       </Dialog>
 

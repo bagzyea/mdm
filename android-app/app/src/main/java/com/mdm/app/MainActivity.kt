@@ -69,9 +69,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusIndicator: View
     private lateinit var statusTextView: TextView
     private lateinit var statusProgressBar: LinearProgressIndicator
-    private lateinit var serverUrlEditText: EditText
-    private lateinit var enrollmentCodeEditText: EditText
-    private lateinit var websocketStatusText: TextView
 
     // Device Health Metrics UI
     private lateinit var batteryPercentage: TextView
@@ -84,17 +81,9 @@ class MainActivity : AppCompatActivity() {
     
     // Buttons - REMOVED DANGEROUS BUTTONS: lockDeviceButton, enableKioskButton, disableKioskButton, startServicesButton, stopServicesButton
     private lateinit var refreshStatusButton: MaterialButton // Primary status refresh button
-    private lateinit var quickRefreshButton: MaterialButton  // Quick actions refresh button
     private lateinit var getDeviceInfoButton: MaterialButton
-    private lateinit var checkPendingCommandsButton: MaterialButton
-    private lateinit var updatePoliciesButton: MaterialButton
-    private lateinit var viewPoliciesButton: MaterialButton
     private lateinit var requestAppButton: MaterialButton
     private lateinit var appInventoryButton: MaterialButton
-    private lateinit var testInstallButton: MaterialButton
-    private lateinit var enableAdminButton: MaterialButton
-    private lateinit var enrollButton: MaterialButton
-    private lateinit var statusButton: MaterialButton
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,9 +120,6 @@ class MainActivity : AppCompatActivity() {
         statusIndicator = binding.statusIndicator
         statusTextView = binding.statusTextView
         statusProgressBar = binding.statusProgressBar
-        serverUrlEditText = binding.serverUrlEditText
-        enrollmentCodeEditText = binding.enrollmentCodeEditText
-        websocketStatusText = binding.websocketStatusText
 
         // Initialize device health metrics UI components
         try {
@@ -148,82 +134,35 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "Some health metrics UI components not found", e)
         }
         
-        // Initialize buttons - REMOVED DANGEROUS BUTTONS for security
+        // Initialize buttons
         refreshStatusButton = binding.refreshStatusButton
-        quickRefreshButton = binding.quickRefreshButton
         getDeviceInfoButton = binding.getDeviceInfoButton
-        checkPendingCommandsButton = binding.checkPendingCommandsButton
-        updatePoliciesButton = binding.updatePoliciesButton
-        viewPoliciesButton = binding.viewPoliciesButton
         requestAppButton = binding.requestAppButton
         appInventoryButton = binding.appInventoryButton
-        testInstallButton = binding.testInstallButton
-        enableAdminButton = binding.enableAdminButton
-        enrollButton = binding.enrollButton
-        statusButton = binding.statusButton
         
-        // Set default server URL
+        // Use default URL or stored URL
         val currentServerUrl = preferenceManager.getServerUrl()
         if (currentServerUrl.isNullOrEmpty()) {
-            // Use emulator-friendly URL by default
             val defaultUrl = if (isRunningOnEmulator()) {
                 AppConfig.Server.BASE_API_URL_FALLBACK
             } else {
                 AppConfig.Server.BASE_API_URL
             }
-            serverUrlEditText.setText(defaultUrl)
             preferenceManager.setServerUrl(defaultUrl)
-        } else {
-            serverUrlEditText.setText(currentServerUrl)
         }
         
         // Set up button listeners
         setupButtonListeners()
-        
-        // Set up server URL change listener
-        serverUrlEditText.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val newUrl = serverUrlEditText.text.toString().trim()
-                if (newUrl.isNotEmpty() && newUrl != preferenceManager.getServerUrl()) {
-                    preferenceManager.setServerUrl(newUrl)
-                    showSnackbar("Server URL updated to: $newUrl")
-                    
-                    // Test connection to new URL if device is enrolled
-                    if (mdmService.isDeviceEnrolled()) {
-                        testConnection(newUrl)
-                    }
-                }
-            }
-        }
     }
     
     private fun setupButtonListeners() {
         // SAFE: Status and information
         refreshStatusButton.setOnClickListener { refreshDeviceStatus() }
-        quickRefreshButton.setOnClickListener { refreshDeviceStatus() }  // Same handler as primary button
         getDeviceInfoButton.setOnClickListener { getDeviceInfo() }
-        statusButton.setOnClickListener { openStatus() }
-
-        // SAFE: Essential MDM functions
-        checkPendingCommandsButton.setOnClickListener { checkPendingCommands() }
-        updatePoliciesButton.setOnClickListener { updatePolicies() }
-        viewPoliciesButton.setOnClickListener { viewPolicies() }
 
         // SAFE: App management
         requestAppButton.setOnClickListener { requestApp() }
         appInventoryButton.setOnClickListener { getAppInventory() }
-        testInstallButton.setOnClickListener { testInstall() }
-
-        // SAFE: Initial enrollment only
-        enableAdminButton.setOnClickListener { enableDeviceAdmin() }
-        enrollButton.setOnClickListener { enrollDevice() }
-        
-        // REMOVED DANGEROUS FUNCTIONS:
-        // - lockDevice() - now server-controlled only
-        // - enableKiosk() - now server-controlled only  
-        // - disableKiosk() - now server-controlled only
-        // - startMDMServices() - now server-controlled only
-        // - stopMDMServices() - now server-controlled only
     }
     
     private fun setupObservers() {
@@ -285,10 +224,7 @@ class MainActivity : AppCompatActivity() {
         
         // Update button states
         updateButtonStates(isAdminActive, isEnrolled)
-        
-        // Update enrollment code field
-        enrollmentCodeEditText.isEnabled = !isEnrolled
-        
+
         // Update WebSocket status
         updateWebSocketStatus(mdmService.isWebSocketConnected())
         
@@ -299,29 +235,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateButtonStates(isAdminActive: Boolean, isEnrolled: Boolean) {
-        enableAdminButton.isEnabled = !isAdminActive
-        enrollButton.isEnabled = isAdminActive && !isEnrolled
-        
         val mdmEnabled = isAdminActive && isEnrolled
-        
+
         // Safe functions - enabled when MDM is active
         getDeviceInfoButton.isEnabled = mdmEnabled
-        checkPendingCommandsButton.isEnabled = mdmEnabled
-        updatePoliciesButton.isEnabled = mdmEnabled
-        viewPoliciesButton.isEnabled = mdmEnabled
         requestAppButton.isEnabled = mdmEnabled
         appInventoryButton.isEnabled = mdmEnabled
-        testInstallButton.isEnabled = mdmEnabled
-        
+
         // Always enabled
         refreshStatusButton.isEnabled = true
-        
-        // REMOVED DANGEROUS BUTTON STATE UPDATES:
-        // - lockDeviceButton (removed for security)
-        // - enableKioskButton (removed for security)
-        // - disableKioskButton (removed for security) 
-        // - startServicesButton (removed for security)
-        // - stopServicesButton (removed for security)
     }
     
     private fun updateStatus(message: String, type: StatusType = StatusType.INFO) {
@@ -374,9 +296,11 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun enrollDevice() {
-        val enrollmentCode = enrollmentCodeEditText.text.toString().trim()
+        // Enrollment code should be obtained from the device initialization or MDM server
+        // For now, enrollment happens automatically during device registration
+        val enrollmentCode = preferenceManager.getEnrollmentCode() ?: ""
         if (enrollmentCode.isEmpty()) {
-            showSnackbar("Please enter an enrollment code", Snackbar.LENGTH_LONG)
+            showSnackbar("No enrollment code found", Snackbar.LENGTH_LONG)
             return
         }
         
@@ -557,6 +481,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Over-the-Air (OTA) Device Provisioning
+    private suspend fun executeProvisioning(payload: JSONObject?, commandId: String) {
+        try {
+            if (payload == null) {
+                throw Exception("Provisioning payload is null")
+            }
+
+            updateStatus("Starting device provisioning...", StatusType.INFO)
+            Log.d(TAG, "Provisioning payload: $payload")
+
+            // Create and execute provisioning executor
+            val executor = com.mdm.app.services.DeviceProvisioningExecutor(
+                this,
+                mdmService,
+                preferenceManager
+            )
+
+            // Run provisioning in IO context
+            executor.executeProvisioning(payload, commandId)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Provisioning failed", e)
+            updateStatus("Provisioning failed: ${e.message}", StatusType.ERROR)
+            sendCommandResult(commandId, false, null, "Provisioning failed: ${e.message}")
+        }
+    }
+
     // Server command handler - processes commands received via WebSocket
     private fun handleServerCommand(command: JSONObject) {
         val commandType = command.getString("commandType")
@@ -597,6 +548,11 @@ class MainActivity : AppCompatActivity() {
                         executeServerSyncSettings()
                     }
                     "RESTART_SERVICES", "restart_services" -> executeServerRestartServices()
+                    "PROVISION_DEVICE", "provision_device" -> {
+                        Log.d(TAG, "Executing PROVISION_DEVICE command")
+                        executeProvisioning(payload, commandId)
+                        return@launch  // Don't send generic result, provisioning sends its own progress
+                    }
                     else -> {
                         Log.w(TAG, "Unknown command type: $commandType")
                         sendCommandResult(commandId, false, null, "Unknown command type: $commandType")
@@ -875,10 +831,8 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateWebSocketStatus(isConnected: Boolean) {
         val status = if (isConnected) "Connected" else "Disconnected"
-        val color = if (isConnected) R.color.statusOnline else R.color.statusOffline
-        
-        websocketStatusText.text = "WebSocket: $status"
-        websocketStatusText.setTextColor(ContextCompat.getColor(this, color))
+        Log.d(TAG, "WebSocket status: $status")
+        // WebSocket status will be reflected in the status indicator
     }
     
     private fun updateEnrollmentUI(isEnrolled: Boolean) {

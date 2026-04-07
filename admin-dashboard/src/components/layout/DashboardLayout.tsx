@@ -33,7 +33,6 @@ import {
   Logout,
   AccountCircle,
   Notifications,
-  AdminPanelSettings,
   Build as BuildIcon,
   Assignment as AssignmentIcon,
   ExpandLess,
@@ -43,6 +42,7 @@ import {
   Search as SearchIcon,
   Map as MapIcon,
   List as ListIcon,
+  Inventory2 as VaultIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications, Notification } from '../../contexts/NotificationContext';
@@ -160,6 +160,13 @@ const navigationItems: NavigationItem[] = [
     icon: <Send />,
     path: '/dashboard/commands',
     requiredPermission: { resource: 'commands', action: 'read' },
+  },
+  {
+    id: 'app-vault',
+    label: 'App Vault',
+    icon: <VaultIcon />,
+    path: '/dashboard/app-vault',
+    requiredPermission: { resource: 'provisioning', action: 'read' },
   },
   {
     id: 'users',

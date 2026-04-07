@@ -220,24 +220,53 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Hidden Technical Bindings Block (To Prevent Crash) -->
-            <LinearLayout
+            <!-- IT Messages & Alerts Card -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-                <com.google.android.material.button.MaterialButton android:id="@+id/quickRefreshButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/statusButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/checkPendingCommandsButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/updatePoliciesButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/viewPoliciesButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/testInstallButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <TextView android:id="@+id/websocketStatusText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <EditText android:id="@+id/serverUrlEditText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <EditText android:id="@+id/enrollmentCodeEditText" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/enableAdminButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/enrollButton" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-            </LinearLayout>
+                app:cardElevation="2dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:strokeWidth="0dp"
+                android:layout_marginBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Latest IT Announcements"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@android:drawable/ic_dialog_info"
+                            app:tint="?attr/colorPrimary"
+                            android:layout_marginEnd="12dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Your device is fully compliant. No actions required."
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>
 

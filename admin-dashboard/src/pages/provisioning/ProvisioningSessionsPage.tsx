@@ -23,13 +23,11 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Tooltip,
   Menu,
   MenuItem as MenuItemComponent,
   Alert,
   LinearProgress,
   Grid,
-  Divider,
   Tabs,
   Tab,
   Accordion,
@@ -38,16 +36,13 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  CircularProgress,
-  Badge
+  ListItemIcon
 } from '@mui/material';
 import {
   Add as AddIcon,
   PlayArrow as StartIcon,
   Pause as PauseIcon,
   Stop as StopIcon,
-  Refresh as RefreshIcon,
   Visibility as ViewIcon,
   MoreVert as MoreVertIcon,
   ExpandMore as ExpandMoreIcon,
@@ -56,22 +51,17 @@ import {
   Warning as WarningIcon,
   Schedule as PendingIcon,
   Devices as DevicesIcon,
-  Apps as AppsIcon,
-  Folder as FilesIcon,
-  NetworkCheck as NetworkIcon,
-  Security as SecurityIcon,
-  LocationOn as LocationIcon,
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { 
-  ProvisioningSession, 
+import {
+  ProvisioningSession,
   ProvisioningProfile,
-  ProvisioningProgress,
   CreateProvisioningSessionRequest,
   ProvisioningDeviceStatus
 } from '../../types';
 import { provisioningService } from '../../services/api';
+import websocketService from '../../services/websocket';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -105,7 +95,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [menuSession, setMenuSession] = useState<ProvisioningSession | null>(null);
   const [tabValue, setTabValue] = useState(0);
-  const [refreshInterval, setRefreshInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<CreateProvisioningSessionRequest>({
@@ -119,18 +108,46 @@ export const ProvisioningSessionsPage: React.FC = () => {
     fetchSessions();
     fetchProfiles();
     fetchDevices();
-    
-    // Set up real-time refresh for active sessions
+
+    // Subscribe to provisioning progress updates using global websocket service
+    const handleProvisioningProgress = (data: any) => {
+      console.log('Received provisioning progress update:', data);
+      setSessions(prevSessions =>
+        prevSessions.map(session =>
+          session.id === data.sessionId
+            ? {
+                ...session,
+                progress: session.progress.map(progress =>
+                  progress.deviceId === data.deviceId
+                    ? {
+                        ...progress,
+                        status: data.status,
+                        currentStep: data.currentStep || progress.currentStep,
+                        completedSteps: data.completedSteps ?? progress.completedSteps,
+                        totalSteps: data.totalSteps ?? progress.totalSteps,
+                        errorMessage: data.errorMessage || progress.errorMessage,
+                        errorCode: data.errorCode || progress.errorCode
+                      }
+                    : progress
+                )
+              }
+            : session
+        )
+      );
+    };
+
+    websocketService.on('provisioningProgressUpdate', handleProvisioningProgress);
+
+    // Set up polling as fallback (every 30 seconds instead of 5 to reduce server load now that we have socket updates)
     const interval = setInterval(() => {
       fetchSessions();
-    }, 5000); // Refresh every 5 seconds
-    
-    setRefreshInterval(interval);
+    }, 30000); // Refresh every 30 seconds
 
     return () => {
       if (interval) {
         clearInterval(interval);
       }
+      websocketService.off('provisioningProgressUpdate', handleProvisioningProgress);
     };
   }, []);
 
@@ -175,7 +192,7 @@ export const ProvisioningSessionsPage: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleEditSession = (session: ProvisioningSession) => {
+  const _handleEditSession = (session: ProvisioningSession) => {
     setSelectedSession(session);
     setDialogOpen(true);
   };

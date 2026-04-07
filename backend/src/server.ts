@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import path from 'path';
 import logger from './logger';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
 
@@ -47,6 +48,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(validateRequest);
+
+// Serve uploaded APKs publicly (Android devices fetch during Zero-Touch provisioning)
+app.use('/public/apks', express.static(path.join(__dirname, '../public/apks')));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -355,8 +359,7 @@ io.on('connection', (socket) => {
           deviceId: messageData.deviceId,
           batteryLevel: messageData.batteryLevel,
           isCharging: messageData.isCharging,
-          location: messageData.location,
-          timestamp: messageData.timestamp
+          location: messageData.location
         };
         // Continue processing as heartbeat (see deviceHeartbeat handler below)
         const updateData: Record<string, unknown> = {
@@ -389,10 +392,10 @@ io.on('connection', (socket) => {
           messageData.commandId,
           {
             success: messageData.success,
-            result: messageData.result,
+            data: messageData.result,
             error: messageData.error,
             timestamp: new Date()
-          }
+          } as any
         );
       }
     } catch (error) {
@@ -551,6 +554,104 @@ io.on('connection', (socket) => {
       });
     } catch (error) {
       logger.error(error, 'Error updating device status');
+    }
+  });
+
+  // Provisioning progress update from device
+  socket.on('provisioningProgress', async (data: any) => {
+    try {
+      const {
+        sessionId,
+        deviceId: deviceIdStr,
+        commandId,
+        step,
+        subStep,
+        completedSteps,
+        totalSteps,
+        error
+      } = data;
+
+      // Find device by deviceId string to get DB id (cuid)
+      const device = await prisma.device.findUnique({
+        where: { deviceId: deviceIdStr },
+        select: { id: true }
+      });
+
+      if (!device) {
+        logger.warn({ deviceId: deviceIdStr }, 'provisioningProgress: device not found');
+        return;
+      }
+
+      // Update ProvisioningProgress record
+      await prisma.provisioningProgress.update({
+        where: {
+          sessionId_deviceId: {
+            sessionId,
+            deviceId: device.id
+          }
+        },
+        data: {
+          status: (step as any) || 'PENDING',
+          currentStep: subStep,
+          completedSteps,
+          totalSteps,
+          errorMessage: error || null,
+          logs: {
+            push: {
+              timestamp: new Date(),
+              level: error ? 'ERROR' : 'INFO',
+              message: subStep,
+              details: { step, completedSteps, totalSteps }
+            }
+          }
+        }
+      });
+
+      // If completed or failed, update device provisioning status and session counters
+      if (step === 'COMPLETED' || step === 'FAILED') {
+        const newStatus = step === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+
+        await prisma.device.update({
+          where: { id: device.id },
+          data: { provisioningStatus: (newStatus as any) }
+        });
+
+        // Update session counters
+        const progressRecords = await prisma.provisioningProgress.findMany({
+          where: { sessionId }
+        });
+
+        const completedCount = progressRecords.filter(p => p.status === 'COMPLETED').length;
+        const failedCount = progressRecords.filter(p => p.status === 'FAILED').length;
+
+        await prisma.provisioningSession.update({
+          where: { id: sessionId },
+          data: {
+            completedDevices: completedCount,
+            failedDevices: failedCount,
+            status:
+              failedCount > 0
+                ? 'FAILED'
+                : completedCount === progressRecords.length
+                ? 'COMPLETED'
+                : 'IN_PROGRESS'
+          }
+        });
+      }
+
+      // Broadcast update to admin dashboard
+      io.to('admins').emit('provisioningProgressUpdate', {
+        sessionId,
+        deviceId: deviceIdStr,
+        step,
+        subStep,
+        completedSteps,
+        totalSteps,
+        error,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      logger.error(error, 'Error handling provisioning progress');
     }
   });
 

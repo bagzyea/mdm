@@ -28,25 +28,14 @@ import {
   AccordionDetails,
   Alert,
   LinearProgress,
-  Tooltip,
-  Avatar,
-  Divider,
-  FormControlLabel,
-  Switch
+  Avatar
 } from '@mui/material';
 import {
-  Add as AddIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
   Apps as AppsIcon,
-  Folder as FolderIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Info as InfoIcon,
-  CloudUpload as UploadIcon,
-  Storage as StorageIcon,
-  Security as SecurityIcon
+  Folder as FolderIcon
 } from '@mui/icons-material';
 
 interface APK {
@@ -104,7 +93,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
   const [availableAPKs, setAvailableAPKs] = useState<APK[]>([]);
   const [selectedAPKs, setSelectedAPKs] = useState<SelectedAPK[]>(initialSelection);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [detailsDialog, setDetailsDialog] = useState<{
@@ -112,7 +101,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
     apk?: APK;
     selectedFolders?: string[];
   }>({ open: false });
-  const [uploadDialog, setUploadDialog] = useState(false);
 
   // Categories for filtering
   const categories = [
@@ -192,25 +180,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
     setSelectedAPKs(prev => prev.filter(s => s.apkId !== apkId));
   };
 
-  const handleReorderSelection = (apkId: string, direction: 'up' | 'down') => {
-    const currentIndex = selectedAPKs.findIndex(s => s.apkId === apkId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= selectedAPKs.length) return;
-
-    const newSelectedAPKs = [...selectedAPKs];
-    [newSelectedAPKs[currentIndex], newSelectedAPKs[newIndex]] = 
-    [newSelectedAPKs[newIndex], newSelectedAPKs[currentIndex]];
-
-    // Update install orders
-    newSelectedAPKs.forEach((apk, index) => {
-      apk.installOrder = index + 1;
-    });
-
-    setSelectedAPKs(newSelectedAPKs);
-  };
-
   const isDataFolderCompatible = (folder: DataFolder, location?: { district: string; region: string }): boolean => {
     if (!folder.geographicScope || folder.geographicScope === 'ALL') {
       return true;
@@ -288,15 +257,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Box display="flex" gap={1} justifyContent="flex-end">
-                <Button
-                  variant="outlined"
-                  startIcon={<UploadIcon />}
-                  onClick={() => setUploadDialog(true)}
-                >
-                  Upload APK
-                </Button>
-              </Box>
+              {/* Upload functionality would go here */}
             </Grid>
           </Grid>
         </CardContent>
@@ -350,7 +311,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
                   return (
                     <ListItem key={apk.id} divider>
                       <ListItemIcon>
-                        <Avatar src={apk.icon} sx={{ bgcolor: 'primary.main' }}>
+                        <Avatar sx={{ bgcolor: 'primary.main' }}>
                           <AppsIcon />
                         </Avatar>
                       </ListItemIcon>
@@ -431,7 +392,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
                 </Typography>
               ) : (
                 <List>
-                  {selectedAPKs.map((selected, index) => (
+                  {selectedAPKs.map((selected, _index) => (
                     <ListItem key={selected.apkId} divider>
                       <ListItemIcon>
                         <Typography variant="caption" color="primary">

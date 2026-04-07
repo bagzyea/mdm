@@ -11,7 +11,7 @@ class WebSocketService {
   private pendingAdminToken: string | null = null;
 
   constructor() {
-    this.connect();
+    // Don't connect immediately - wait until joinAdminRoom() is called after login
   }
 
   connect(): void {
@@ -19,10 +19,18 @@ class WebSocketService {
       return;
     }
 
+    // Clean up old socket before creating a new one
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
     this.socket = io('http://localhost:5001', {
       transports: ['websocket'],
       upgrade: true,
       rememberUpgrade: true,
+      reconnection: false, // We handle reconnection manually
     });
 
     this.socket.on('connect', () => {
@@ -109,6 +117,11 @@ class WebSocketService {
     // Real-time dashboard updates
     this.socket.on('dashboardUpdate', (data) => {
       this.triggerHandlers('dashboardUpdate', data);
+    });
+
+    // Provisioning progress updates
+    this.socket.on('provisioningProgressUpdate', (data) => {
+      this.triggerHandlers('provisioningProgressUpdate', data);
     });
   }
 
@@ -237,6 +250,11 @@ class WebSocketService {
       return;
     }
     this.pendingAdminToken = jwt;
+
+    // Ensure socket is connected before trying to authenticate
+    if (!this.socket) {
+      this.connect();
+    }
 
     if (this.socket?.connected) {
       this.authenticateAdmin(jwt);

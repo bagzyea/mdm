@@ -26,6 +26,7 @@ import {
   pauseProvisioningSession,
   cancelProvisioningSession,
   updateProvisioningProgress,
+  reportDeviceProvisioningProgress,
   getSessionStatistics
 } from '../controllers/provisioningSessionController';
 import { authenticateToken, requireRole } from '../middleware/auth';
@@ -68,6 +69,7 @@ router.post('/sessions/:id/start', requireRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR
 router.post('/sessions/:id/pause', requireRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR'), pauseProvisioningSession);
 router.post('/sessions/:id/cancel', requireRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR'), cancelProvisioningSession);
 router.put('/sessions/:id/progress', requireRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR'), updateProvisioningProgress);
+router.put('/sessions/:sessionId/device-progress', reportDeviceProvisioningProgress);
 router.get('/sessions/:id/statistics', requireRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'), getSessionStatistics);
 
 export default router;

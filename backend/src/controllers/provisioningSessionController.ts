@@ -479,6 +479,96 @@ export const updateProvisioningProgress = async (req: Request, res: Response) =>
   }
 };
 
+// Device-initiated progress report (HTTP fallback for WebSocket)
+export const reportDeviceProvisioningProgress = async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { deviceId, commandId, step, subStep, completedSteps, totalSteps, error } = req.body;
+
+    // Find device by deviceId string to get DB id (cuid)
+    const device = await prisma.device.findUnique({
+      where: { deviceId },
+      select: { id: true }
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Update ProvisioningProgress record
+    const progress = await prisma.provisioningProgress.findUnique({
+      where: {
+        sessionId_deviceId: {
+          sessionId,
+          deviceId: device.id
+        }
+      }
+    });
+
+    if (!progress) {
+      return res.status(404).json({ error: 'Provisioning session for this device not found' });
+    }
+
+    const updateData: any = {
+      status: (step as any) || 'PENDING',
+      currentStep: subStep,
+      completedSteps: completedSteps ?? 0,
+      totalSteps: totalSteps ?? 0,
+      errorMessage: error || null
+    };
+
+    // Add log entry
+    const existingLogs = (progress.logs as any) || [];
+    updateData.logs = [
+      ...existingLogs,
+      {
+        timestamp: new Date(),
+        level: error ? 'ERROR' : 'INFO',
+        message: subStep,
+        details: { step, completedSteps, totalSteps }
+      }
+    ];
+
+    // Set timestamps
+    if (step !== 'PENDING' && !progress.startedAt) {
+      updateData.startedAt = new Date();
+    }
+
+    if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(step)) {
+      updateData.completedAt = new Date();
+    }
+
+    const updatedProgress = await prisma.provisioningProgress.update({
+      where: {
+        sessionId_deviceId: {
+          sessionId,
+          deviceId: device.id
+        }
+      },
+      data: updateData
+    });
+
+    // Update device provisioning status
+    await prisma.device.update({
+      where: { id: device.id },
+      data: {
+        provisioningStatus: (step as any) || 'PENDING',
+        lastProvisionedAt: step === 'COMPLETED' ? new Date() : undefined
+      }
+    });
+
+    // Update session counters if completed or failed
+    if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(step)) {
+      await updateSessionCounters(sessionId);
+    }
+
+    res.json(updatedProgress);
+  } catch (error) {
+    console.error('Error reporting device provisioning progress:', error);
+    res.status(500).json({ error: 'Failed to report provisioning progress' });
+  }
+};
+
 export const getSessionStatistics = async (req: Request, res: Response) => {
   try {
     const { timeRange = '30' } = req.query;

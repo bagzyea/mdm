@@ -27,7 +27,6 @@ import {
   Menu,
   MenuItem as MenuItemComponent,
   Alert,
-  LinearProgress,
   Grid,
   Divider
 } from '@mui/material';
@@ -38,7 +37,6 @@ import {
   Delete as DeleteIcon,
   Visibility as ViewIcon,
   MoreVert as MoreVertIcon,
-  PlayArrow as StartIcon,
   Check as ValidateIcon,
   Devices as DevicesIcon,
   Apps as AppsIcon,
@@ -76,11 +74,11 @@ interface ProfileFormData {
   geographicRules?: GeographicRules;
 }
 
-const DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
+const _DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
 const FILE_TYPES = ['CONFIG', 'FORM', 'DATA', 'CERTIFICATE', 'DOCUMENTATION', 'MEDIA', 'OTHER'];
-const APN_CARRIERS = ['MTN', 'AIRTEL', 'CUSTOM'];
-const NETWORK_TYPES = ['3G', '4G', '5G', 'AUTO'];
-const PROTOCOLS = ['IPV4', 'IPV6', 'IPV4V6'];
+const _APN_CARRIERS = ['MTN', 'AIRTEL', 'CUSTOM'];
+const _NETWORK_TYPES = ['3G', '4G', '5G', 'AUTO'];
+const _PROTOCOLS = ['IPV4', 'IPV6', 'IPV4V6'];
 
 export const ProvisioningProfilesPage: React.FC = () => {
   const [profiles, setProfiles] = useState<ProvisioningProfile[]>([]);
@@ -153,9 +151,9 @@ export const ProvisioningProfilesPage: React.FC = () => {
       applications: profile.applications.map(app => ({
         packageName: app.packageName,
         appName: app.appName,
-        version: app.version,
-        apkUrl: app.apkUrl,
-        apkHash: app.apkHash,
+        version: app.version || '',
+        apkUrl: app.apkUrl || '',
+        apkHash: app.apkHash || '',
         requiredPermissions: app.requiredPermissions,
         installOrder: app.installOrder,
         isRequired: app.isRequired
@@ -164,13 +162,13 @@ export const ProvisioningProfilesPage: React.FC = () => {
       securityConfig: profile.securityConfig,
       filePackages: profile.filePackages.map(pkg => ({
         name: pkg.name,
-        description: pkg.description,
+        description: pkg.description || '',
         fileType: pkg.fileType,
         filePath: pkg.filePath,
-        fileHash: pkg.fileHash,
+        fileHash: pkg.fileHash || '',
         targetPath: pkg.targetPath,
         isRequired: pkg.isRequired,
-        fileSize: pkg.fileSize
+        fileSize: pkg.fileSize || 0
       })),
       geographicRules: profile.geographicRules
     });
@@ -214,14 +212,28 @@ export const ProvisioningProfilesPage: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
-      const request: CreateProvisioningProfileRequest = formData;
-      
+      const request: CreateProvisioningProfileRequest = { ...formData };
+
+      // Map selectedAPKs to applications if flexible APK mode is enabled
+      if (useFlexibleAPKs && formData.selectedAPKs && formData.selectedAPKs.length > 0) {
+        request.applications = formData.selectedAPKs.map(sel => ({
+          packageName: sel.apk.packageName,
+          appName: sel.apk.appName,
+          version: sel.apk.version,
+          apkUrl: `http://${window.location.hostname}:5001/public/apks/${sel.apk.filePath.split('/').pop()}`,
+          apkHash: sel.apk.apkHash,
+          requiredPermissions: sel.apk.permissions,
+          installOrder: sel.installOrder,
+          isRequired: sel.isRequired
+        }));
+      }
+
       if (dialogMode === 'create') {
         await provisioningService.createProfile(request);
       } else if (dialogMode === 'edit' && selectedProfile) {
         await provisioningService.updateProfile(selectedProfile.id, request);
       }
-      
+
       setDialogOpen(false);
       await fetchProfiles();
     } catch (err) {
@@ -574,14 +586,14 @@ export const ProvisioningProfilesPage: React.FC = () => {
             /* New Flexible APK Selection */
             <APKSelectionBuilder
               deviceModels={formData.deviceModels}
-              deviceLocation={formData.geographicRules ? {
-                district: formData.geographicRules.allowedDistricts?.[0] || '',
-                region: formData.geographicRules.allowedRegions?.[0] || ''
+              deviceLocation={formData.geographicRules && (formData.geographicRules.districts || formData.geographicRules.regions) ? {
+                district: formData.geographicRules.districts?.[0] || '',
+                region: formData.geographicRules.regions?.[0] || ''
               } : undefined}
               onSelectionChange={(selectedAPKs) => {
                 setFormData(prev => ({ ...prev, selectedAPKs }));
               }}
-              initialSelection={formData.selectedAPKs}
+              initialSelection={formData.selectedAPKs || []}
             />
           ) : (
             /* Legacy Application Configuration */

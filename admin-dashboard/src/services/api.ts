@@ -55,7 +55,10 @@ class ApiService {
     this.axiosInstance.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response?.status === 401) {
+        const status = error.response?.status;
+        const code = error.response?.data?.code;
+        // Handle both 401 (no token) and 403 with INVALID_TOKEN (expired token)
+        if (status === 401 || (status === 403 && code === 'INVALID_TOKEN')) {
           // Token expired or invalid - trigger graceful logout
           this.handleTokenExpired();
         }
@@ -292,7 +295,9 @@ class ApiService {
       parameters: parameters || {},
       priority: 'NORMAL'
     });
-    return response.data.commands[0];
+    const cmd = response.data.commands[0];
+    if (!cmd) throw new Error('No command returned from server');
+    return cmd;
   }
 
   async sendCommandToMultipleDevices(commandData: {
@@ -369,7 +374,6 @@ class ApiService {
       const activePolicies = policies.filter(p => p.isActive !== false).length;
 
       // Get command statistics
-      const commandSummary = commandsData.summary || {};
       const commandsByStatus = commandsData.byStatus || [];
       
       const pendingCommands = commandsByStatus.find(s => s.status === 'PENDING')?.count || 0;
@@ -774,4 +778,23 @@ export const provisioningService = {
   applyFieldConfiguration: (id: string, deviceIds: string[]) => apiService.applyFieldConfiguration(id, deviceIds),
   // Device Model Recognition
   detectDeviceModel: (deviceId: string) => apiService.detectDeviceModel(deviceId),
+};
+
+// Export APK Vault service for enterprise app repository management
+export const apkVaultService = {
+  /** Fetch all apps in the corporate app vault */
+  getAll: (): Promise<any[]> => apiService.get('/apk-registry'),
+
+  /** Upload a new APK. formData must contain the 'apk' file field. */
+  upload: (formData: FormData): Promise<any> =>
+    apiService.post('/apk-registry/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  /** Permanently delete an APK and its file from the server */
+  delete: (id: string): Promise<void> => apiService.delete(`/apk-registry/${id}`),
+
+  /** Returns a publicly-accessible download URL for the APK */
+  getDownloadUrl: (filePath: string): string =>
+    `${window.location.protocol}//${window.location.hostname}:5001${filePath}`,
 };

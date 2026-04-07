@@ -96,15 +96,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     // Register token expiry callback with API service
     apiService.setOnTokenExpiredCallback(handleTokenExpired);
-    
+
     // Check if user is already logged in
     const initAuth = async () => {
       try {
         const token = apiService.getToken();
         if (token) {
           logger.log('🔑 Found existing token, verifying...');
-          // Verify token is still valid by getting current user
-          const currentUser = await apiService.getCurrentUser();
+
+          // Create a timeout promise that rejects after 5 seconds
+          const verifyWithTimeout = new Promise<any>((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              reject(new Error('Token verification timeout - backend not responding'));
+            }, 5000);
+
+            apiService.getCurrentUser().then(
+              (user) => {
+                clearTimeout(timeoutId);
+                resolve(user);
+              },
+              (error) => {
+                clearTimeout(timeoutId);
+                reject(error);
+              }
+            );
+          });
+
+          const currentUser = await verifyWithTimeout;
           logger.log('✅ Token verified, user authenticated:', currentUser.username);
           setUser(currentUser);
           // Join admin room for real-time updates
@@ -112,15 +130,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // Invalidate all queries to refresh data with authenticated user
           queryClient.invalidateQueries();
         } else {
-          logger.log('❌ No token found');
+          logger.log('ℹ️ No token found');
         }
       } catch (error) {
-        logger.error('❌ Failed to initialize auth:', error);
-        // Token is invalid or expired
+        logger.warn('⚠️ Token verification failed, user will need to login:', (error as Error).message);
+        // Token is invalid, expired, or backend is unavailable
         apiService.clearToken();
         setUser(null);
-        // Clear all cached queries
-        queryClient.clear();
+        // Don't clear all queries to preserve cached data
+        // queryClient.clear();
       } finally {
         setIsLoading(false);
       }
@@ -130,28 +148,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [queryClient, handleTokenExpired]);
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
+    // Note: We do NOT set isLoading(true) here - that would show the
+    // full-screen spinner and block the login form for 30s on timeout.
+    // The LoginPage manages its own local loading state.
     try {
-      setIsLoading(true);
       logger.log('🔐 Attempting login with:', { username: credentials.username });
-      
+
       const response: AuthResponse = await apiService.login(credentials);
       logger.log('✅ Login successful:', { user: response.user.username, role: response.user.role });
-      
+
       setUser(response.user);
-      
+
       // Join admin room for real-time updates
       websocketService.joinAdminRoom();
-      
+
       // Invalidate all queries to refresh data with new authenticated user
       queryClient.invalidateQueries();
-      logger.log('🔄 Queries invalidated for fresh data');
-      
-      logger.log('🎯 User authenticated, redirecting to dashboard...');
     } catch (error) {
       logger.error('❌ Login failed:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 

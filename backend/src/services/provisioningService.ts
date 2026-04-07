@@ -1,10 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { 
+import {
   ProvisioningDeviceStatus,
   ProvisioningLog,
   APNConfiguration,
   ProvisioningSecurityConfig
 } from '../types';
+import { getCommandService } from './commandServiceInstance';
+import { CommandType } from '../types/commands';
 
 const prisma = new PrismaClient();
 
@@ -12,29 +14,6 @@ interface ProvisioningOptions {
   parallelLimit?: number;
   retryAttempts?: number;
   skipValidation?: boolean;
-}
-
-// Mock CommandService for now - this should be replaced with actual implementation
-class CommandServiceClass {
-  async sendCommand(deviceId: string, command: any): Promise<{ success: boolean; message?: string; data?: any }> {
-    // This would integrate with your existing command system
-    console.log(`Sending command to device ${deviceId}:`, command);
-    
-    // Simulate success for now
-    return { 
-      success: true, 
-      message: 'Command executed successfully',
-      data: {} 
-    };
-  }
-}
-
-// Mock WebSocketService for now
-class WebSocketServiceClass {
-  broadcastToAdmins(message: any) {
-    // This would integrate with your existing WebSocket service
-    console.log('Broadcasting to admins:', message);
-  }
 }
 
 export class ProvisioningService {
@@ -84,95 +63,85 @@ export class ProvisioningService {
   }
 
   async provisionDevice(
-    session: any, 
-    device: any, 
-    retryAttempts: number = 3, 
+    session: any,
+    device: any,
+    retryAttempts: number = 3,
     skipValidation: boolean = false
   ) {
     const profile = session.profile;
-    let attempt = 0;
 
-    while (attempt < retryAttempts) {
-      try {
-        // Update status to pending
-        await this.updateProgress(session.id, device.id, 'PENDING', {
-          currentStep: 'Starting provisioning',
-          logs: [{
-            timestamp: new Date(),
-            level: 'INFO',
-            message: `Starting provisioning attempt ${attempt + 1}`,
-            details: { attempt: attempt + 1, maxAttempts: retryAttempts }
-          }]
-        });
-
-        // Step 1: Validate device
-        if (!skipValidation) {
-          await this.validateDevice(session.id, device, profile);
-        }
-
-        // Step 2: Download and install applications
-        if (profile.applications && profile.applications.length > 0) {
-          await this.provisionApplications(session.id, device, profile.applications);
-        }
-
-        // Step 3: Configure network settings
-        if (profile.networkConfig) {
-          await this.configureNetwork(session.id, device, profile.networkConfig);
-        }
-
-        // Step 4: Configure security settings
-        if (profile.securityConfig) {
-          await this.configureSecurity(session.id, device, profile.securityConfig);
-        }
-
-        // Step 5: Deploy file packages
-        if (profile.filePackages && profile.filePackages.length > 0) {
-          await this.deployFilePackages(session.id, device, profile.filePackages);
-        }
-
-        // Step 6: Final validation
-        await this.validateProvisioning(session.id, device, profile);
-
-        // Step 7: Quality Control Validation
-        await this.performQualityControlValidation(session.id, device, profile);
-
-        // Success
-        await this.updateProgress(session.id, device.id, 'COMPLETED', {
-          currentStep: 'Provisioning completed',
-          logs: [{
-            timestamp: new Date(),
-            level: 'INFO',
-            message: 'Device provisioning completed successfully',
-            details: { attempt: attempt + 1 }
-          }]
-        });
-
-        return; // Success, exit retry loop
-
-      } catch (error) {
-        attempt++;
-        const isLastAttempt = attempt >= retryAttempts;
-        
-        console.error(`Provisioning attempt ${attempt} failed for device ${device.deviceId}:`, error);
-
-        if (isLastAttempt) {
-          await this.updateProgress(session.id, device.id, 'FAILED', {
-            currentStep: 'Provisioning failed',
-            errorMessage: (error as Error).message,
-            errorCode: 'PROVISIONING_FAILED',
-            logs: [{
-              timestamp: new Date(),
-              level: 'ERROR',
-              message: `Provisioning failed after ${retryAttempts} attempts`,
-              details: { error: (error as Error).message, totalAttempts: retryAttempts }
-            }]
-          });
-          throw error;
-        } else {
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
-        }
+    try {
+      // Step 1: Pre-flight device validation
+      if (!skipValidation) {
+        await this.validateDevice(session.id, device, profile);
       }
+
+      // Step 2: Build PROVISION_DEVICE command payload
+      const payload = {
+        sessionId: session.id,
+        profileId: profile.id,
+        apps: (profile.applications || []).map((app: any) => ({
+          packageName: app.packageName,
+          appName: app.appName,
+          apkUrl: app.apkUrl,
+          apkHash: app.apkHash,
+          permissions: app.requiredPermissions || [],
+          installOrder: app.installOrder,
+          isRequired: app.isRequired
+        })),
+        networkConfig: profile.networkConfig || null,
+        securityConfig: profile.securityConfig || null
+      };
+
+      // Step 3: Create RemoteCommand in database
+      const remoteCommand = await prisma.remoteCommand.create({
+        data: {
+          deviceId: device.id,
+          command: 'PROVISION_DEVICE' as CommandType,
+          parameters: payload,
+          status: 'PENDING'
+        }
+      });
+
+      // Step 4: Update progress to PENDING
+      await this.updateProgress(session.id, device.id, 'PENDING', {
+        currentStep: 'Provisioning command sent to device',
+        logs: [{
+          timestamp: new Date(),
+          level: 'INFO',
+          message: 'Provisioning command sent to device',
+          details: { commandId: remoteCommand.id }
+        }]
+      });
+
+      // Step 5: Send command to device via WebSocket
+      const commandService = getCommandService();
+      await commandService.notifyDeviceOfCommand(
+        device.deviceId,
+        remoteCommand.id,
+        'PROVISION_DEVICE' as CommandType,
+        payload
+      );
+
+      console.log(`Provisioning command sent to device ${device.deviceId} with command ID ${remoteCommand.id}`);
+      // Device will report progress back via socket.on('provisioningProgress')
+      // No waiting here - async feedback loop
+    } catch (error) {
+      console.error(`Failed to send provisioning command to device ${device.deviceId}:`, error);
+
+      await this.updateProgress(session.id, device.id, 'FAILED', {
+        currentStep: 'Failed to send provisioning command',
+        errorMessage: (error as Error).message,
+        errorCode: 'COMMAND_SEND_FAILED',
+        logs: [{
+          timestamp: new Date(),
+          level: 'ERROR',
+          message: 'Failed to send provisioning command to device',
+          details: { error: (error as Error).message }
+        }]
+      });
+
+      throw error;
     }
   }
 
@@ -197,484 +166,6 @@ export class ProvisioningService {
     }
 
     await this.sendLog(sessionId, device.id, 'INFO', 'Device validation passed');
-  }
-
-  private async provisionApplications(sessionId: string, device: any, applications: any[]) {
-    await this.updateProgress(sessionId, device.id, 'DOWNLOADING_APPS', {
-      currentStep: 'Downloading applications'
-    });
-
-    // Sort applications by install order
-    const sortedApps = applications.sort((a, b) => a.installOrder - b.installOrder);
-    
-    for (const app of sortedApps) {
-      await this.sendLog(sessionId, device.id, 'INFO', `Processing application: ${app.appName}`);
-
-      if (app.apkUrl) {
-        // Download APK if not already cached
-        await this.downloadAPK(app);
-      }
-
-      // Install application
-      await this.updateProgress(sessionId, device.id, 'INSTALLING_APPS', {
-        currentStep: `Installing ${app.appName}`
-      });
-
-      await this.installApplication(device, app);
-      
-      // Grant required permissions
-      if (app.requiredPermissions && app.requiredPermissions.length > 0) {
-        await this.grantAppPermissions(device, app);
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', `Successfully installed: ${app.appName}`);
-    }
-  }
-
-  private async configureNetwork(sessionId: string, device: any, networkConfig: APNConfiguration) {
-    await this.updateProgress(sessionId, device.id, 'CONFIGURING_NETWORK', {
-      currentStep: 'Configuring network settings'
-    });
-
-    const command = {
-      type: 'CONFIGURE_NETWORK',
-      parameters: {
-        apnConfig: networkConfig
-      }
-    };
-
-    const result = await commandService.sendCommand(device.id, command);
-    
-    if (!result.success) {
-      throw new Error(`Failed to configure network: ${result.message}`);
-    }
-
-    await this.sendLog(sessionId, device.id, 'INFO', 'Network configuration completed');
-  }
-
-  private async configureSecurity(sessionId: string, device: any, securityConfig: ProvisioningSecurityConfig) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring security settings...');
-
-      // Configure device PIN
-      if (securityConfig.devicePin) {
-        const command = {
-          type: 'SET_DEVICE_PIN',
-          parameters: { pin: securityConfig.devicePin }
-        };
-        const result = await commandService.sendCommand(device.id, command);
-        
-        if (!result.success) {
-          throw new Error(`Failed to set device PIN: ${result.message}`);
-        }
-      }
-
-      // Configure screen timeout
-      if (securityConfig.screenTimeout) {
-        const timeoutCommand = {
-          type: 'SET_SCREEN_TIMEOUT',
-          parameters: { timeout: securityConfig.screenTimeout }
-        };
-        const timeoutResult = await commandService.sendCommand(device.id, timeoutCommand);
-        
-        if (!timeoutResult.success) {
-          throw new Error(`Failed to set screen timeout: ${timeoutResult.message}`);
-        }
-      }
-
-      // Configure encryption
-      if (securityConfig.enableEncryption) {
-        const encryptionCommand = {
-          type: 'ENABLE_ENCRYPTION',
-          parameters: { 
-            encryptionType: securityConfig.encryptionType || 'AES'
-          }
-        };
-        const encryptionResult = await commandService.sendCommand(device.id, encryptionCommand);
-        
-        if (!encryptionResult.success) {
-          throw new Error(`Failed to enable encryption: ${encryptionResult.message}`);
-        }
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Security configuration completed successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Security configuration failed: ${errorMessage}`);
-    }
-  }
-
-  private async deployFilePackages(sessionId: string, device: any, filePackages: any[]) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Deploying file packages...');
-
-      for (const package_ of filePackages) {
-        const deployCommand = {
-          type: 'DEPLOY_FILE_PACKAGE',
-          parameters: {
-            packageId: package_.id,
-            targetPath: package_.targetPath,
-            permissions: package_.permissions
-          }
-        };
-        const result = await commandService.sendCommand(device.id, deployCommand);
-        
-        if (!result.success) {
-          throw new Error(`Failed to deploy file package ${package_.name}: ${result.message}`);
-        }
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'File packages deployed successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`File package deployment failed: ${errorMessage}`);
-    }
-  }
-
-  private async validateProvisioning(sessionId: string, device: any, profile: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating provisioning...');
-
-      // Validate applications
-      if (profile.applications && profile.applications.length > 0) {
-        const validateAppsCommand = {
-          type: 'VALIDATE_APPLICATIONS',
-          parameters: { appIds: profile.applications.map((app: any) => app.id) }
-        };
-        const appValidationResult = await commandService.sendCommand(device.id, validateAppsCommand);
-        
-        if (!appValidationResult.success) {
-          throw new Error(`Application validation failed: ${appValidationResult.message}`);
-        }
-      }
-
-      // Validate file packages
-      if (profile.filePackages && profile.filePackages.length > 0) {
-        const validateFilesCommand = {
-          type: 'VALIDATE_FILE_PACKAGES',
-          parameters: { packageIds: profile.filePackages.map((pkg: any) => pkg.id) }
-        };
-        const fileValidationResult = await commandService.sendCommand(device.id, validateFilesCommand);
-        
-        if (!fileValidationResult.success) {
-          throw new Error(`File package validation failed: ${fileValidationResult.message}`);
-        }
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Provisioning validation completed successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Provisioning validation failed: ${errorMessage}`);
-    }
-  }
-
-  // Quality Control Validation - NEW FEATURE
-  private async performQualityControlValidation(sessionId: string, device: any, profile: any) {
-    try {
-      await this.updateProgress(sessionId, device.id, 'VALIDATING', {
-        currentStep: 'Performing quality control validation'
-      });
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Starting quality control validation...');
-
-      const validationResults = {
-        deviceCompliance: await this.validateDeviceCompliance(sessionId, device),
-        applicationIntegrity: await this.validateApplicationIntegrity(sessionId, device, profile),
-        securityConfiguration: await this.validateSecurityConfiguration(sessionId, device, profile),
-        networkConfiguration: await this.validateNetworkConfiguration(sessionId, device, profile),
-        dataIntegrity: await this.validateDataIntegrity(sessionId, device, profile),
-        performanceBaseline: await this.validatePerformanceBaseline(sessionId, device)
-      };
-
-      // Check if all validations passed
-      const failedValidations = Object.entries(validationResults)
-        .filter(([_key, result]) => !result.success)
-        .map(([key, result]) => ({ key, error: result.error }));
-
-      if (failedValidations.length > 0) {
-        const errorMessage = `Quality control validation failed: ${failedValidations.map(f => `${f.key}: ${f.error}`).join(', ')}`;
-        throw new Error(errorMessage);
-      }
-
-      // Store quality control results
-      await this.storeQualityControlResults(sessionId, device.id, validationResults);
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Quality control validation completed successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Quality control validation failed: ${errorMessage}`);
-    }
-  }
-
-  private async validateDeviceCompliance(sessionId: string, device: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating device compliance...');
-
-      // Check device encryption status
-      const encryptionCommand = {
-        type: 'GET_ENCRYPTION_STATUS',
-        parameters: {}
-      };
-      const encryptionResult = await commandService.sendCommand(device.id, encryptionCommand);
-      
-      if (!encryptionResult.success || !encryptionResult.data?.isEncrypted) {
-        return { success: false, error: 'Device encryption not enabled' };
-      }
-
-      // Check device security patch level
-      const patchCommand = {
-        type: 'GET_SECURITY_PATCH_LEVEL',
-        parameters: {}
-      };
-      const patchResult = await commandService.sendCommand(device.id, patchCommand);
-      
-      if (!patchResult.success) {
-        return { success: false, error: 'Unable to verify security patch level' };
-      }
-
-      // Check for root/jailbreak detection
-      const rootCommand = {
-        type: 'CHECK_ROOT_STATUS',
-        parameters: {}
-      };
-      const rootResult = await commandService.sendCommand(device.id, rootCommand);
-      
-      if (!rootResult.success || rootResult.data?.isRooted) {
-        return { success: false, error: 'Device is rooted or jailbroken' };
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async validateApplicationIntegrity(sessionId: string, device: any, profile: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating application integrity...');
-
-      if (!profile.applications || profile.applications.length === 0) {
-        return { success: true };
-      }
-
-      for (const app of profile.applications) {
-        const integrityCommand = {
-          type: 'VALIDATE_APP_INTEGRITY',
-          parameters: { packageName: app.packageName }
-        };
-        const integrityResult = await commandService.sendCommand(device.id, integrityCommand);
-        
-        if (!integrityResult.success || !integrityResult.data?.isValid) {
-          return { success: false, error: `Application ${app.appName} integrity check failed` };
-        }
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async validateSecurityConfiguration(sessionId: string, device: any, profile: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating security configuration...');
-
-      if (!profile.securityConfig) {
-        return { success: true };
-      }
-
-      // Validate device PIN
-      if (profile.securityConfig.devicePin) {
-        const pinCommand = {
-          type: 'VERIFY_DEVICE_PIN',
-          parameters: { expectedPin: profile.securityConfig.devicePin }
-        };
-        const pinResult = await commandService.sendCommand(device.id, pinCommand);
-        
-        if (!pinResult.success || !pinResult.data?.isCorrect) {
-          return { success: false, error: 'Device PIN not configured correctly' };
-        }
-      }
-
-      // Validate encryption
-      if (profile.securityConfig.enableEncryption) {
-        const encryptionCommand = {
-          type: 'VERIFY_ENCRYPTION_STATUS',
-          parameters: { expectedType: profile.securityConfig.encryptionType }
-        };
-        const encryptionResult = await commandService.sendCommand(device.id, encryptionCommand);
-        
-        if (!encryptionResult.success || !encryptionResult.data?.isEncrypted) {
-          return { success: false, error: 'Device encryption not enabled' };
-        }
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async validateNetworkConfiguration(sessionId: string, device: any, profile: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating network configuration...');
-
-      if (!profile.networkConfig) {
-        return { success: true };
-      }
-
-      // Validate APN configuration
-      const apnCommand = {
-        type: 'VERIFY_APN_CONFIG',
-        parameters: { expectedApn: profile.networkConfig }
-      };
-      const apnResult = await commandService.sendCommand(device.id, apnCommand);
-      
-      if (!apnResult.success || !apnResult.data?.isConfigured) {
-        return { success: false, error: 'APN configuration not applied correctly' };
-      }
-
-      // Validate network connectivity
-      const connectivityCommand = {
-        type: 'TEST_NETWORK_CONNECTIVITY',
-        parameters: {}
-      };
-      const connectivityResult = await commandService.sendCommand(device.id, connectivityCommand);
-      
-      if (!connectivityResult.success || !connectivityResult.data?.isConnected) {
-        return { success: false, error: 'Network connectivity test failed' };
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async validateDataIntegrity(sessionId: string, device: any, profile: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating data integrity...');
-
-      if (!profile.filePackages || profile.filePackages.length === 0) {
-        return { success: true };
-      }
-
-      for (const pkg of profile.filePackages) {
-        const integrityCommand = {
-          type: 'VERIFY_FILE_INTEGRITY',
-          parameters: { 
-            filePath: pkg.targetPath,
-            expectedHash: pkg.fileHash 
-          }
-        };
-        const integrityResult = await commandService.sendCommand(device.id, integrityCommand);
-        
-        if (!integrityResult.success || !integrityResult.data?.isValid) {
-          return { success: false, error: `File package ${pkg.name} integrity check failed` };
-        }
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async validatePerformanceBaseline(sessionId: string, device: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating performance baseline...');
-
-      // Check device performance metrics
-      const performanceCommand = {
-        type: 'GET_PERFORMANCE_METRICS',
-        parameters: {}
-      };
-      const performanceResult = await commandService.sendCommand(device.id, performanceCommand);
-      
-      if (!performanceResult.success) {
-        return { success: false, error: 'Unable to retrieve performance metrics' };
-      }
-
-      const metrics = performanceResult.data;
-      
-      // Check CPU usage
-      if (metrics.cpuUsage > 80) {
-        return { success: false, error: 'CPU usage too high for field deployment' };
-      }
-
-      // Check available memory
-      if (metrics.availableMemory < 500 * 1024 * 1024) { // Less than 500MB
-        return { success: false, error: 'Insufficient available memory' };
-      }
-
-      // Check available storage
-      if (metrics.availableStorage < 1024 * 1024 * 1024) { // Less than 1GB
-        return { success: false, error: 'Insufficient available storage' };
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
-
-  private async storeQualityControlResults(sessionId: string, deviceId: string, results: any) {
-    try {
-      // Store quality control results in database
-      await prisma.qualityControlResult.create({
-        data: {
-          sessionId,
-          deviceId,
-          results: results as any,
-          status: 'PASSED',
-          createdAt: new Date()
-        }
-      });
-
-      await this.sendLog(sessionId, deviceId, 'INFO', 'Quality control results stored successfully');
-    } catch (error) {
-      console.error('Error storing quality control results:', error);
-      // Don't fail the entire process if storing results fails
-    }
-  }
-
-  private async downloadAPK(app: any): Promise<void> {
-    // Implementation for downloading APK files
-    // This would integrate with file storage service
-    console.log(`Downloading APK for ${app.appName} from ${app.apkUrl}`);
-  }
-
-  private async installApplication(device: any, app: any): Promise<void> {
-    const installCommand = {
-      type: 'INSTALL_APPLICATION',
-      parameters: {
-        appId: app.id,
-        apkUrl: app.apkUrl,
-        packageName: app.packageName
-      }
-    };
-    const result = await commandService.sendCommand(device.id, installCommand);
-    
-    if (!result.success) {
-      throw new Error(`Failed to install application ${app.appName}: ${result.message}`);
-    }
-  }
-
-  private async grantAppPermissions(device: any, app: any): Promise<void> {
-    if (app.requiredPermissions && app.requiredPermissions.length > 0) {
-      const permissionsCommand = {
-        type: 'GRANT_APP_PERMISSIONS',
-        parameters: {
-          packageName: app.packageName,
-          permissions: app.requiredPermissions
-        }
-      };
-      const result = await commandService.sendCommand(device.id, permissionsCommand);
-      
-      if (!result.success) {
-        throw new Error(`Failed to grant permissions for ${app.appName}: ${result.message}`);
-      }
-    }
   }
 
   async startBulkApplicationDeployment(
@@ -918,6 +409,60 @@ export class ProvisioningService {
         throw new Error(`Failed to validate ${app.appName} installation: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+  }
+
+  private async installApplication(device: any, app: any): Promise<void> {
+    // Note: In the OTA model, app installation happens on the device via PROVISION_DEVICE command
+    // This is a placeholder for legacy bulk deployment feature
+    // Should be refactored to send PROVISION_DEVICE command instead
+    const commandService = getCommandService();
+    const command = await prisma.remoteCommand.create({
+      data: {
+        deviceId: device.id,
+        command: 'INSTALL_APP' as CommandType,
+        parameters: {
+          packageName: app.packageName,
+          apkUrl: app.apkUrl,
+          apkHash: app.apkHash
+        },
+        status: 'PENDING'
+      }
+    });
+
+    await commandService.notifyDeviceOfCommand(
+      device.deviceId,
+      command.id,
+      'INSTALL_APP' as CommandType,
+      command.parameters
+    );
+  }
+
+  private async grantAppPermissions(device: any, app: any): Promise<void> {
+    // Note: In the OTA model, permission granting happens on the device via PROVISION_DEVICE command
+    // This is a placeholder for legacy bulk deployment feature
+    if (!app.requiredPermissions || app.requiredPermissions.length === 0) {
+      return;
+    }
+
+    const commandService = getCommandService();
+    const command = await prisma.remoteCommand.create({
+      data: {
+        deviceId: device.id,
+        command: 'GRANT_PERMISSIONS' as CommandType,
+        parameters: {
+          packageName: app.packageName,
+          permissions: app.requiredPermissions
+        },
+        status: 'PENDING'
+      }
+    });
+
+    await commandService.notifyDeviceOfCommand(
+      device.deviceId,
+      command.id,
+      'GRANT_PERMISSIONS' as CommandType,
+      command.parameters
+    );
   }
 
   async applyFieldConfiguration(
@@ -1272,17 +817,6 @@ export class ProvisioningService {
           lastProvisionedAt: status === 'COMPLETED' ? new Date() : undefined
         }
       });
-
-      // Send real-time update via WebSocket
-      webSocketService.broadcastToAdmins({
-        type: 'PROVISIONING_PROGRESS',
-        data: {
-          sessionId,
-          deviceId,
-          status,
-          ...updates
-        }
-      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error updating progress:', errorMessage);
@@ -1351,5 +885,3 @@ export class ProvisioningService {
 }
 
 export const provisioningService = new ProvisioningService();
-export const commandService = new CommandServiceClass();
-export const webSocketService = new WebSocketServiceClass();
