@@ -26,7 +26,6 @@ export const getDeviceTransfers = async (req: Request, res: Response) => {
           device: {
             select: {
               deviceId: true,
-              name: true,
               model: true,
               manufacturer: true
             }
@@ -118,13 +117,12 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
         toDepartmentName,
         transferReason,
         transferNotes,
-        requestedBy: req.user?.id || 'system'
+        requestedBy: req.user?.userId || 'system'
       },
       include: {
         device: {
           select: {
             deviceId: true,
-            name: true,
             model: true
           }
         }
@@ -143,17 +141,17 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
           fromDepartment: fromDepartmentName,
           toDepartment: toDepartmentName,
           reason: transferReason,
-          requestedBy: req.user?.id || 'system'
+          requestedBy: req.user?.userId || 'system'
         }
       }
     });
 
     // TODO: Notify via WebSocket when available
 
-    res.status(201).json(transfer);
+    return res.status(201).json(transfer);
   } catch (error) {
     console.error('Error requesting device transfer:', error);
-    res.status(500).json({ error: 'Failed to request device transfer' });
+    return res.status(500).json({ error: 'Failed to request device transfer' });
   }
 };
 
@@ -161,6 +159,11 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
 export const approveDeviceTransfer = async (req: Request, res: Response) => {
   try {
     const { transferId } = req.params;
+
+    if (!transferId) {
+      return res.status(400).json({ error: 'Transfer ID is required' });
+    }
+
     const { approved, approvalNotes } = req.body;
 
     const transfer = await prisma.deviceTransfer.findUnique({
@@ -181,7 +184,7 @@ export const approveDeviceTransfer = async (req: Request, res: Response) => {
       where: { id: transferId },
       data: {
         status: newStatus,
-        approvedBy: req.user?.id || 'system',
+        approvedBy: req.user?.userId || 'system',
         approvedAt: new Date(),
         transferNotes: approvalNotes ? 
           `${transfer.transferNotes || ''}\n\nApproval Notes: ${approvalNotes}`.trim() : 
@@ -197,11 +200,11 @@ export const approveDeviceTransfer = async (req: Request, res: Response) => {
     // Log approval event
     await prisma.deviceEvent.create({
       data: {
-        deviceId: transfer.device.id,
+        deviceId: transfer.deviceId,
         eventType: approved ? 'TRANSFER_APPROVED' : 'TRANSFER_REJECTED',
         eventData: {
           transferId,
-          approvedBy: req.user?.id || 'system',
+          approvedBy: req.user?.userId || 'system',
           approvalNotes
         }
       }
@@ -209,10 +212,10 @@ export const approveDeviceTransfer = async (req: Request, res: Response) => {
 
     // TODO: Notify via WebSocket when available
 
-    res.json(updatedTransfer);
+    return res.json(updatedTransfer);
   } catch (error) {
     console.error('Error processing transfer approval:', error);
-    res.status(500).json({ error: 'Failed to process transfer approval' });
+    return res.status(500).json({ error: 'Failed to process transfer approval' });
   }
 };
 
@@ -304,7 +307,6 @@ export const getDeviceRetirements = async (req: Request, res: Response) => {
           device: {
             select: {
               deviceId: true,
-              name: true,
               model: true,
               manufacturer: true,
               assignedUserEmail: true
@@ -368,13 +370,12 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
         dataWipeRequired,
         physicalReturn,
         notes,
-        retiredBy: req.user?.id || 'system'
+        retiredBy: req.user?.userId || 'system'
       },
       include: {
         device: {
           select: {
             deviceId: true,
-            name: true,
             model: true
           }
         }
@@ -387,8 +388,8 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
       data: {
         isRetired: true,
         retiredAt: new Date(),
-        retiredBy: req.user?.id || 'system',
-        retiredReason
+        retiredBy: req.user?.userId || 'system',
+        retiredReason: retirementReason
       }
     });
 
@@ -401,17 +402,17 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
           retirementId: retirement.id,
           retirementReason,
           retirementType,
-          retiredBy: req.user?.id || 'system'
+          retiredBy: req.user?.userId || 'system'
         }
       }
     });
 
     // TODO: Notify via WebSocket when available
 
-    res.status(201).json(retirement);
+    return res.status(201).json(retirement);
   } catch (error) {
     console.error('Error initiating device retirement:', error);
-    res.status(500).json({ error: 'Failed to initiate device retirement' });
+    return res.status(500).json({ error: 'Failed to initiate device retirement' });
   }
 };
 
@@ -419,6 +420,11 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
 export const updateRetirementStatus = async (req: Request, res: Response) => {
   try {
     const { retirementId } = req.params;
+
+    if (!retirementId) {
+      return res.status(400).json({ error: 'Retirement ID is required' });
+    }
+
     const { status, notes, dataWipeCompleted, physicalReturnCompleted } = req.body;
 
     const retirement = await prisma.deviceRetirement.findUnique({
@@ -449,23 +455,23 @@ export const updateRetirementStatus = async (req: Request, res: Response) => {
     // Log status update event
     await prisma.deviceEvent.create({
       data: {
-        deviceId: retirement.device.id,
+        deviceId: retirement.deviceId,
         eventType: 'RETIREMENT_STATUS_UPDATED',
         eventData: {
           retirementId,
           oldStatus: retirement.status,
           newStatus: status,
-          updatedBy: req.user?.id || 'system'
+          updatedBy: req.user?.userId || 'system'
         }
       }
     });
 
     // TODO: Notify via WebSocket when available
 
-    res.json(updatedRetirement);
+    return res.json(updatedRetirement);
   } catch (error) {
     console.error('Error updating retirement status:', error);
-    res.status(500).json({ error: 'Failed to update retirement status' });
+    return res.status(500).json({ error: 'Failed to update retirement status' });
   }
 };
 

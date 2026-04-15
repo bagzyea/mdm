@@ -111,59 +111,55 @@ const DeviceRetirementPage: React.FC = () => {
   });
 
   // Fetch retirements
-  const { data: retirementsData, isLoading } = useQuery(
-    ['device-retirements', page, rowsPerPage, statusFilter],
-    () => apiService.get('/lifecycle/retirements', {
+  const { data: retirementsData, isLoading } = useQuery({
+    queryKey: ['device-retirements', page, rowsPerPage, statusFilter],
+    queryFn: () => apiService.get('/lifecycle/retirements', {
       params: {
         page: page + 1,
         limit: rowsPerPage,
         ...(statusFilter && { status: statusFilter })
       }
     }).then(res => res.data),
-    { keepPreviousData: true }
-  );
+    placeholderData: (previousData) => previousData
+  });
 
   // Fetch devices for retirement selection
-  const { data: devices } = useQuery(
-    'devices-for-retirement',
-    () => apiService.get('/devices', {
+  const { data: devices } = useQuery({
+    queryKey: ['devices-for-retirement'],
+    queryFn: () => apiService.get('/devices', {
       params: { limit: 1000, isRetired: false }
     }).then(res => res.data.data)
-  );
+  });
 
   // Initiate retirement mutation
-  const initiateRetirementMutation = useMutation(
-    (retirementData: any) => apiService.post('/lifecycle/retirements', retirementData),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('device-retirements');
-        queryClient.invalidateQueries('devices');
-        setRetirementDialogOpen(false);
-        resetRetirementForm();
-        setError(null);
-      },
-      onError: (error: any) => {
-        setError(error.response?.data?.error || 'Failed to initiate retirement');
-      }
+  const initiateRetirementMutation = useMutation({
+    mutationFn: (retirementData: any) => apiService.post('/lifecycle/retirements', retirementData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-retirements'] });
+      queryClient.invalidateQueries({ queryKey: ['devices-for-retirement'] });
+      setRetirementDialogOpen(false);
+      resetRetirementForm();
+      setError(null);
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.error || 'Failed to initiate retirement');
     }
-  );
+  });
 
   // Update retirement status mutation
-  const updateStatusMutation = useMutation(
-    ({ retirementId, updateData }: { retirementId: string; updateData: any }) =>
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ retirementId, updateData }: { retirementId: string; updateData: any }) =>
       apiService.put(`/lifecycle/retirements/${retirementId}`, updateData),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('device-retirements');
-        setStatusUpdateDialogOpen(false);
-        setSelectedRetirement(null);
-        setError(null);
-      },
-      onError: (error: any) => {
-        setError(error.response?.data?.error || 'Failed to update status');
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-retirements'] });
+      setStatusUpdateDialogOpen(false);
+      setSelectedRetirement(null);
+      setError(null);
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.error || 'Failed to update status');
     }
-  );
+  });
 
   const resetRetirementForm = () => {
     setRetirementForm({

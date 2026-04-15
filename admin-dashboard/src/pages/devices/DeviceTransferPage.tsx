@@ -102,64 +102,60 @@ const DeviceTransferPage: React.FC = () => {
   });
 
   // Fetch transfers
-  const { data: transfersData, isLoading } = useQuery(
-    ['device-transfers', page, rowsPerPage, statusFilter],
-    () => apiService.get('/lifecycle/transfers', {
+  const { data: transfersData, isLoading } = useQuery({
+    queryKey: ['device-transfers', page, rowsPerPage, statusFilter],
+    queryFn: () => apiService.get('/lifecycle/transfers', {
       params: {
         page: page + 1,
         limit: rowsPerPage,
         ...(statusFilter && { status: statusFilter })
       }
     }).then(res => res.data),
-    { keepPreviousData: true }
-  );
+    placeholderData: (previousData) => previousData
+  });
 
   // Fetch departments
-  const { data: departments } = useQuery(
-    'departments',
-    () => apiService.get('/lifecycle/departments').then(res => res.data)
-  );
+  const { data: departments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => apiService.get('/lifecycle/departments').then(res => res.data)
+  });
 
   // Fetch devices for transfer selection
-  const { data: devices } = useQuery(
-    'devices-for-transfer',
-    () => apiService.get('/devices', {
+  const { data: devices } = useQuery({
+    queryKey: ['devices-for-transfer'],
+    queryFn: () => apiService.get('/devices', {
       params: { limit: 1000, status: 'ACTIVE' }
     }).then(res => res.data.data)
-  );
+  });
 
   // Request transfer mutation
-  const requestTransferMutation = useMutation(
-    (transferData: any) => apiService.post('/lifecycle/transfers', transferData),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('device-transfers');
-        setTransferDialogOpen(false);
-        resetTransferForm();
-        setError(null);
-      },
-      onError: (error: any) => {
-        setError(error.response?.data?.error || 'Failed to request transfer');
-      }
+  const requestTransferMutation = useMutation({
+    mutationFn: (transferData: any) => apiService.post('/lifecycle/transfers', transferData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-transfers'] });
+      setTransferDialogOpen(false);
+      resetTransferForm();
+      setError(null);
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.error || 'Failed to request transfer');
     }
-  );
+  });
 
   // Approve transfer mutation
-  const approveTransferMutation = useMutation(
-    ({ transferId, approved, notes }: { transferId: string; approved: boolean; notes?: string }) =>
+  const approveTransferMutation = useMutation({
+    mutationFn: ({ transferId, approved, notes }: { transferId: string; approved: boolean; notes?: string }) =>
       apiService.put(`/lifecycle/transfers/${transferId}/approve`, { approved, approvalNotes: notes }),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('device-transfers');
-        setApprovalDialogOpen(false);
-        setSelectedTransfer(null);
-        setError(null);
-      },
-      onError: (error: any) => {
-        setError(error.response?.data?.error || 'Failed to process approval');
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-transfers'] });
+      setApprovalDialogOpen(false);
+      setSelectedTransfer(null);
+      setError(null);
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.error || 'Failed to process approval');
     }
-  );
+  });
 
   const resetTransferForm = () => {
     setTransferForm({

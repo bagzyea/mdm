@@ -75,33 +75,32 @@ const SecurityDashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   // Fetch security data
-  const { data: certificates, isLoading: certificatesLoading } = useQuery<Certificate[]>(
-    'certificates',
-    apiService.getCertificates
-  );
+  const { data: certificates, isLoading: certificatesLoading } = useQuery<Certificate[]>({
+    queryKey: ['certificates'],
+    queryFn: apiService.getCertificates
+  });
 
-  const { data: devices } = useQuery('devices', () => apiService.getDevices({ limit: 100 }));
+  const { data: devices } = useQuery({
+    queryKey: ['devices'],
+    queryFn: () => apiService.getDevices({ limit: 100 })
+  });
 
   // Mutations
-  const createCertificateMutation = useMutation(
-    (certificateRequest: CertificateRequest) => apiService.createCertificate(certificateRequest),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('certificates');
-        setCreateCertificateOpen(false);
-        setNewCertificate({});
-      }
+  const createCertificateMutation = useMutation({
+    mutationFn: (certificateRequest: CertificateRequest) => apiService.createCertificate(certificateRequest),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['certificates'] });
+      setCreateCertificateOpen(false);
+      setNewCertificate({});
     }
-  );
+  });
 
-  const revokeCertificateMutation = useMutation(
-    ({ id, reason }: { id: string; reason?: string }) => apiService.revokeCertificate(id, reason),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('certificates');
-      }
+  const revokeCertificateMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => apiService.revokeCertificate(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['certificates'] });
     }
-  );
+  });
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
