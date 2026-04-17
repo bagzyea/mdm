@@ -31,9 +31,10 @@ import { securityHeaders, validateRequest } from './middleware/auth';
 app.use(helmet());
 app.use(securityHeaders);
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? 
-    ['https://admin.yourdomain.com', 'https://yourdomain.com'] : 
-    ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:8080'],
+  origin: process.env.NODE_ENV === 'production' ?
+    ['https://admin.yourdomain.com', 'https://yourdomain.com'] :
+    ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:5002', 'http://localhost:8080',
+     'http://10.10.10.241:3000', 'http://10.10.10.241:5000', 'http://10.10.10.241:5002'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));

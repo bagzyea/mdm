@@ -296,20 +296,25 @@ class ApiService {
 
   // Dashboard API
   async getDashboardStats(): Promise<DashboardStats> {
-    // This would be a dedicated endpoint for dashboard statistics
-    // For now, we'll aggregate from existing endpoints
-    const [devices, policies, commands] = await Promise.all([
-      this.getDevices({ limit: 1 }),
+    const [devicesRaw, policies, commands] = await Promise.all([
+      this.getDevices(),
       this.getPolicies({ limit: 1 }),
       this.getCommands({ limit: 1 })
     ]);
 
+    // getDevices returns a plain array; getPolicies/getCommands return paginated
+    const devices = Array.isArray(devicesRaw) ? devicesRaw as unknown as Device[] : (devicesRaw as any).data ?? [];
+    const totalDevices = devices.length;
+    const activeDevices = devices.filter((d: Device) => d.status === 'ACTIVE').length;
+    const inactiveDevices = devices.filter((d: Device) => d.status === 'INACTIVE').length;
+    const suspendedDevices = devices.filter((d: Device) => d.status === 'SUSPENDED').length;
+
     return {
-      totalDevices: devices.pagination.total,
-      activeDevices: 0, // Would need specific endpoint
-      inactiveDevices: 0,
-      suspendedDevices: 0,
-      totalPolicies: policies.pagination.total,
+      totalDevices,
+      activeDevices,
+      inactiveDevices,
+      suspendedDevices,
+      totalPolicies: policies.pagination?.total ?? 0,
       activePolicies: 0,
       pendingCommands: 0,
       executedCommands: 0,

@@ -19,7 +19,7 @@ class WebSocketService {
       return;
     }
 
-    this.socket = io('http://localhost:5001', {
+    this.socket = io(import.meta.env.VITE_WS_URL || 'http://localhost:5001', {
       transports: ['websocket'],
       upgrade: true,
       rememberUpgrade: true,

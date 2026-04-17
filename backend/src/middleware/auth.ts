@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthService } from '../services/authService';
 import { TokenPayload, UserRole, RATE_LIMITS } from '../types/auth';
 
@@ -174,7 +174,7 @@ export const createRoleBasedRateLimit = () => {
       legacyHeaders: false,
       keyGenerator: (req: Request) => {
         // Use user ID for authenticated requests, IP for unauthenticated
-        return req.user ? `user:${req.user.userId}` : (req.ip || 'unknown');
+        return req.user ? `user:${req.user.userId}` : ipKeyGenerator(req.ip ?? 'unknown');
       },
       skip: (req: Request) => {
         // Skip rate limiting for super admins

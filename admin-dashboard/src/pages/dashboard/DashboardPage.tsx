@@ -101,7 +101,7 @@ const DashboardPage: React.FC = () => {
     isLoading, 
     error,
     refetch 
-  } = useQuery<DashboardStats>('dashboardStats', apiService.getDashboardStats, {
+  } = useQuery<DashboardStats>('dashboardStats', () => apiService.getDashboardStats(), {
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 
