@@ -4,19 +4,20 @@ export interface SecurityPolicy {
   passwordRequired: boolean;
   passwordMinLength?: number;
   passwordComplexity?: 'simple' | 'complex' | 'alphanumeric';
-  passwordExpiry?: number; // days
+  passwordExpiryDays?: number; // Advanced
+  passwordHistoryCount?: number; // Advanced
   maxFailedAttempts?: number;
-  lockoutDuration?: number; // minutes
+  autoWipeOnFailure?: boolean; // Advanced
   encryptionRequired: boolean;
-  screenLockTimeout?: number; // minutes
+  screenLockTimeout?: number;
   biometricAllowed?: boolean;
-  automaticLock: boolean;
+  trustAgentsAllowed?: boolean; // Advanced
 }
 
 export interface NetworkPolicy {
   wifiRestrictions: {
-    allowedNetworks?: string[]; // SSIDs
-    blockedNetworks?: string[]; // SSIDs
+    allowedNetworks?: string[];
+    blockedNetworks?: string[];
     requireCertificate?: boolean;
     allowPersonalHotspot?: boolean;
   };
@@ -29,18 +30,19 @@ export interface NetworkPolicy {
   cellularDataAllowed: boolean;
   roamingAllowed: boolean;
   bluetoothAllowed: boolean;
+  nfcDisabled?: boolean; // Advanced
+  airplaneModeDisabled?: boolean; // Advanced
+  globalProxyUrl?: string; // Advanced
 }
 
 export interface ApplicationPolicy {
-  appWhitelist?: string[]; // package names
-  appBlacklist?: string[]; // package names
+  appWhitelist?: string[];
+  appBlacklist?: string[];
   allowAppInstallation: boolean;
   allowUnknownSources: boolean;
-  managedAppStore?: {
-    url: string;
-    certificate?: string;
-  };
-  restrictedAppCategories?: string[];
+  clipboardDlpEnabled?: boolean; // Advanced: Data loss prevention
+  preventAppDataClearing?: boolean; // Advanced
+  safeSearchEnforced?: boolean; // Advanced
   allowAppUninstall: boolean;
   kioskMode?: {
     enabled: boolean;
@@ -48,18 +50,29 @@ export interface ApplicationPolicy {
   };
 }
 
+export interface HardwarePolicy {
+  cameraDisabled?: boolean;
+  usbFileTransferDisabled?: boolean;
+  externalStorageDisabled?: boolean;
+  screenCaptureDisabled?: boolean;
+  microphoneDisabled?: boolean;
+}
+
+export interface SystemPolicy {
+  systemUpdatePolicy?: 'AUTOMATIC' | 'POSTPONED' | 'WINDOWED';
+  updateWindowStart?: string; // e.g., "02:00"
+  updateWindowEnd?: string; // e.g., "05:00"
+  factoryResetDisabled?: boolean;
+  safeBootDisabled?: boolean;
+  timeDateModificationDisabled?: boolean;
+  accountModificationDisabled?: boolean; // Prevents adding personal Google accounts
+}
+
 export interface CompliancePolicy {
   requiredOSVersion?: string;
   maxOSVersion?: string;
   jailbreakDetection: boolean;
-  antivirusRequired?: boolean;
   deviceHealthChecks: boolean;
-  locationServicesRequired?: boolean;
-  backupRequired?: boolean;
-  updatePolicy?: {
-    automatic: boolean;
-    delayDays?: number;
-  };
 }
 
 export interface PolicyRules {
@@ -67,13 +80,15 @@ export interface PolicyRules {
   network?: NetworkPolicy;
   application?: ApplicationPolicy;
   compliance?: CompliancePolicy;
+  hardware?: HardwarePolicy;
+  system?: SystemPolicy;
   customRules?: Record<string, any>;
 }
 
 export interface CreatePolicyRequest {
   name: string;
   description: string;
-  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE';
+  type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM';
   rules: PolicyRules;
   targetDevices?: string[]; // device IDs
   priority?: number;

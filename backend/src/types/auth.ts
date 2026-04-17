@@ -92,6 +92,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     { resource: 'devices', actions: ['create', 'read', 'update', 'delete'] },
     { resource: 'policies', actions: ['create', 'read', 'update', 'delete'] },
     { resource: 'commands', actions: ['create', 'read', 'update', 'delete'] },
+    { resource: 'provisioning', actions: ['create', 'read', 'update', 'delete'] },
+    { resource: 'certificates', actions: ['create', 'read', 'update', 'delete'] },
+    { resource: 'security', actions: ['create', 'read', 'update', 'delete'] },
     { resource: 'analytics', actions: ['read'] },
     { resource: 'settings', actions: ['read', 'update'] }
   ],
@@ -99,12 +102,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     { resource: 'devices', actions: ['read', 'update'] },
     { resource: 'policies', actions: ['read', 'apply'] },
     { resource: 'commands', actions: ['create', 'read'] },
+    { resource: 'provisioning', actions: ['read', 'update'] },
+    { resource: 'certificates', actions: ['read'] },
+    { resource: 'security', actions: ['read'] },
     { resource: 'analytics', actions: ['read'] }
   ],
   VIEWER: [
     { resource: 'devices', actions: ['read'] },
     { resource: 'policies', actions: ['read'] },
     { resource: 'commands', actions: ['read'] },
+    { resource: 'provisioning', actions: ['read'] },
+    { resource: 'certificates', actions: ['read'] },
+    { resource: 'security', actions: ['read'] },
     { resource: 'analytics', actions: ['read'] }
   ],
   DEVICE: [

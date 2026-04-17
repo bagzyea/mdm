@@ -1,6 +1,6 @@
 // Remote command types and interfaces
 
-export type CommandType = 
+export type CommandType =
   | 'LOCK_DEVICE'
   | 'UNLOCK_DEVICE'
   | 'WIPE_DEVICE'
@@ -21,38 +21,54 @@ export type CommandType =
   | 'DISABLE_LOST_MODE'
   | 'TAKE_SCREENSHOT'
   | 'GET_APP_LIST'
-  | 'SYNC_SETTINGS';
+  | 'SYNC_SETTINGS'
+  | 'PROVISION_DEVICE';
 
 export interface CommandParameters {
   // Lock/Unlock commands
   lockMessage?: string;
   lockPhoneNumber?: string;
-  
+
   // App management
   packageName?: string;
   appUrl?: string;
   appName?: string;
-  
+
   // Policy management
   policyId?: string;
-  
+
   // WiFi configuration
   ssid?: string;
   password?: string;
   security?: 'WPA' | 'WPA2' | 'WPA3' | 'OPEN';
-  
+
   // Lost mode
   lostModeMessage?: string;
   lostModePhone?: string;
   footnote?: string;
-  
+
   // Kiosk mode
   allowedApps?: string[];
   exitCode?: string;
-  
+
   // Location
   enableHighAccuracy?: boolean;
-  
+
+  // Provisioning parameters
+  sessionId?: string;
+  profileId?: string;
+  apps?: Array<{
+    packageName: string;
+    appName: string;
+    apkUrl: string;
+    apkHash?: string;
+    permissions?: string[];
+    installOrder: number;
+    isRequired: boolean;
+  }>;
+  networkConfig?: any;  // APNConfiguration
+  securityConfig?: any; // ProvisioningSecurityConfig
+
   // General parameters
   force?: boolean;
   timeout?: number;

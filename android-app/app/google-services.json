@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "65544622336",
+    "project_id": "ubos-mdm",
+    "storage_bucket": "ubos-mdm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:65544622336:android:4cbed0a5d93457315aa3e5",
+        "android_client_info": {
+          "package_name": "com.mdm.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqGVR0JOcR8MmqzPmZdbSoY9s0ELMExHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:65544622336:android:4cbed0a5d93457315aa3e5",
+        "android_client_info": {
+          "package_name": "com.mdm.app.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqGVR0JOcR8MmqzPmZdbSoY9s0ELMExHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

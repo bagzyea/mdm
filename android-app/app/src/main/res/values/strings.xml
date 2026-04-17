@@ -1,0 +1,35 @@
+<resources>
+    <string name="app_name">UBOS MDM</string>
+    <string name="device_admin_description">UBOS MDM Device Administrator</string>
+    <string name="device_admin_explanation">This app requires device administrator permissions to manage device policies, security settings, and remote commands.</string>
+    
+    <!-- App Request Activity -->
+    <string name="app_request_title">Request Application Installation</string>
+    <string name="app_request_app_details">Application Details</string>
+    <string name="app_request_app_name_hint">Application Name *</string>
+    <string name="app_request_package_name_hint">Package Name (Optional)</string>
+    <string name="app_request_reason_hint">Reason for Request *</string>
+    <string name="app_request_priority_label">Priority</string>
+    <string name="app_request_submit">Submit Request</string>
+    <string name="app_request_existing_requests">Existing Requests</string>
+    <string name="app_request_no_requests">No requests submitted yet</string>
+    <string name="app_request_success">App request submitted successfully!</string>
+    <string name="app_request_error">Failed to submit request: %1$s</string>
+    <string name="app_request_device_not_enrolled">Device not enrolled with MDM server</string>
+    <string name="app_request_error_generic">Error submitting request: %1$s</string>
+    
+    <!-- Priority Levels -->
+    <string name="priority_low">LOW</string>
+    <string name="priority_normal">NORMAL</string>
+    <string name="priority_high">HIGH</string>
+    <string name="priority_urgent">URGENT</string>
+    
+    <!-- Status Messages -->
+    <string name="status_pending">PENDING</string>
+    <string name="status_approved">APPROVED</string>
+    <string name="status_rejected">REJECTED</string>
+    <string name="status_installing">INSTALLING</string>
+    <string name="status_installed">INSTALLED</string>
+    <string name="status_failed">FAILED</string>
+    <string name="status_cancelled">CANCELLED</string>
+</resources>

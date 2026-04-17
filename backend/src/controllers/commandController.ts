@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { CreateCommandRequest, CommandResult, CommandType } from '../types/commands';
+import { getCommandService } from '../services/commandServiceInstance';
 
 const prisma = new PrismaClient();
 
 // Get all commands with filtering and pagination
-export const getAllCommands = async (req: Request, res: Response) => {
+export const getAllCommands = async (req: Request, res: Response): Promise<void> => {
   try {
     const { 
       page = 1, 
@@ -65,10 +66,9 @@ export const getAllCommands = async (req: Request, res: Response) => {
   }
 };
 
-// Get specific command by ID
-export const getCommandById = async (req: Request, res: Response) => {
+export const getCommandById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     
     const command = await prisma.remoteCommand.findUnique({
       where: { id },
@@ -90,7 +90,8 @@ export const getCommandById = async (req: Request, res: Response) => {
     });
 
     if (!command) {
-      return res.status(404).json({ error: 'Command not found' });
+      res.status(404).json({ error: 'Command not found' });
+      return;
     }
 
     res.json(command);
@@ -101,36 +102,39 @@ export const getCommandById = async (req: Request, res: Response) => {
 };
 
 // Create and send new command(s)
-export const createCommand = async (req: Request, res: Response) => {
+export const createCommand = async (req: Request, res: Response): Promise<void> => {
   try {
     const commandData: CreateCommandRequest = req.body;
     
-    // Validate devices exist
     const devices = await prisma.device.findMany({
       where: { 
-        id: { in: commandData.deviceIds },
-        status: { in: ['ENROLLED', 'ACTIVE'] } // Only send to active devices
+        OR: [
+          { id: { in: commandData.deviceIds } },
+          { deviceId: { in: commandData.deviceIds } }
+        ]
       }
     });
 
     if (devices.length === 0) {
-      return res.status(400).json({ error: 'No valid devices found for command execution' });
+      res.status(400).json({ error: 'No valid devices found for command execution' });
+      return;
     }
 
     if (devices.length !== commandData.deviceIds.length) {
       const foundIds = devices.map(d => d.id);
       const missingIds = commandData.deviceIds.filter(id => !foundIds.includes(id));
-      console.warn(`Some devices not found or inactive: ${missingIds.join(', ')}`);
+      console.warn(`Some devices not found: ${missingIds.join(', ')}`);
     }
 
     // Validate command parameters
     const validationError = validateCommandParameters(commandData.command, commandData.parameters);
     if (validationError) {
-      return res.status(400).json({ error: validationError });
+      res.status(400).json({ error: validationError });
+      return;
     }
 
     // Create commands for each device
-    const commandPromises = devices.map(device => 
+    const commandPromises = devices.map(device =>
       prisma.remoteCommand.create({
         data: {
           deviceId: device.id,
@@ -160,9 +164,25 @@ export const createCommand = async (req: Request, res: Response) => {
 
     await Promise.all(eventPromises);
 
-    // If not scheduled, immediately queue for execution
+    // If not scheduled, immediately push commands to devices via WebSocket
     if (!commandData.executeAt) {
-      await queueCommandsForExecution(createdCommands.map(c => c.id));
+      try {
+        const commandService = getCommandService();
+        const notificationPromises = createdCommands.map(cmd => {
+          const device = devices.find(d => d.id === cmd.deviceId);
+          return commandService.notifyDeviceOfCommand(
+            device!.deviceId,
+            cmd.id,
+            cmd.command as CommandType,
+            cmd.parameters
+          );
+        });
+        await Promise.all(notificationPromises);
+      } catch (error) {
+        console.warn('Warning: Could not push commands via WebSocket, will be delivered via polling:', error);
+        // Fall back to queue for offline devices
+        await queueCommandsForExecution(createdCommands.map(c => c.id));
+      }
     }
 
     res.status(201).json({
@@ -178,9 +198,9 @@ export const createCommand = async (req: Request, res: Response) => {
 };
 
 // Update command result (called by device)
-export const updateCommandResult = async (req: Request, res: Response) => {
+export const updateCommandResult = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { result, status } = req.body;
 
     const command = await prisma.remoteCommand.findUnique({
@@ -189,7 +209,8 @@ export const updateCommandResult = async (req: Request, res: Response) => {
     });
 
     if (!command) {
-      return res.status(404).json({ error: 'Command not found' });
+      res.status(404).json({ error: 'Command not found' });
+      return;
     }
 
     // Update command with result
@@ -225,20 +246,22 @@ export const updateCommandResult = async (req: Request, res: Response) => {
 };
 
 // Cancel pending command
-export const cancelCommand = async (req: Request, res: Response) => {
+export const cancelCommand = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     
     const command = await prisma.remoteCommand.findUnique({
       where: { id }
     });
 
     if (!command) {
-      return res.status(404).json({ error: 'Command not found' });
+      res.status(404).json({ error: 'Command not found' });
+      return;
     }
 
     if (command.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Can only cancel pending commands' });
+      res.status(400).json({ error: 'Can only cancel pending commands' });
+      return;
     }
 
     const cancelledCommand = await prisma.remoteCommand.update({
@@ -266,7 +289,7 @@ export const cancelCommand = async (req: Request, res: Response) => {
 };
 
 // Get command statistics
-export const getCommandStatistics = async (req: Request, res: Response) => {
+export const getCommandStatistics = async (req: Request, res: Response): Promise<void> => {
   try {
     const { deviceId, days = 30 } = req.query;
     const since = new Date();
@@ -325,12 +348,13 @@ export const getCommandStatistics = async (req: Request, res: Response) => {
 };
 
 // Bulk command operations
-export const bulkCommandOperation = async (req: Request, res: Response) => {
+export const bulkCommandOperation = async (req: Request, res: Response): Promise<void> => {
   try {
     const { operation, commandIds } = req.body;
 
     if (!Array.isArray(commandIds) || commandIds.length === 0) {
-      return res.status(400).json({ error: 'Command IDs must be a non-empty array' });
+      res.status(400).json({ error: 'Command IDs must be a non-empty array' });
+      return;
     }
 
     let updateData: any;
@@ -342,7 +366,8 @@ export const bulkCommandOperation = async (req: Request, res: Response) => {
         updateData = { status: 'PENDING' };
         break;
       default:
-        return res.status(400).json({ error: 'Invalid operation' });
+        res.status(400).json({ error: 'Invalid operation' });
+        return;
     }
 
     const result = await prisma.remoteCommand.updateMany({

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Blue Colors -->
+    <color name="colorPrimary">#1565C0</color>
+    <color name="colorPrimaryDark">#0D47A1</color>
+    <color name="colorPrimaryDeep">#0A3D91</color>
+    <color name="colorPrimaryLight">#42A5F5</color>
+    
+    <!-- Accent Colors -->
+    <color name="colorAccent">#03DAC5</color>
+    <color name="colorSecondary">#00BCD4</color>
+    
+    <!-- Status Colors -->
+    <color name="colorSuccess">#4CAF50</color>
+    <color name="colorWarning">#FF9800</color>
+    <color name="colorError">#F44336</color>
+    <color name="colorInfo">#2196F3</color>
+    
+    <!-- Text Colors -->
+    <color name="textPrimary">#212121</color>
+    <color name="textSecondary">#757575</color>
+    <color name="textHint">#BDBDBD</color>
+    
+    <!-- Background Colors -->
+    <color name="backgroundPrimary">#FAFAFA</color>
+    <color name="backgroundCard">#FFFFFF</color>
+    <color name="backgroundOverlay">#80000000</color>
+    
+    <!-- White Variants -->
+    <color name="white">#FFFFFF</color>
+    <color name="white_90">#E6FFFFFF</color>
+    <color name="white_70">#B3FFFFFF</color>
+    <color name="white_50">#80FFFFFF</color>
+    
+    <!-- Blue Gradients for Cards -->
+    <color name="blueGradientStart">#1976D2</color>
+    <color name="blueGradientEnd">#42A5F5</color>
+    
+    <!-- Dark Theme Colors -->
+    <color name="textPrimaryDark">#FFFFFF</color>
+    <color name="textSecondaryDark">#B3FFFFFF</color>
+    <color name="textHintDark">#80FFFFFF</color>
+    <color name="backgroundPrimaryDark">#121212</color>
+    <color name="backgroundCardDark">#1E1E1E</color>
+    <color name="backgroundSurfaceDark">#2D2D2D</color>
+    
+    <!-- Material Design 3 System Colors -->
+    <color name="md3_primary">#1565C0</color>
+    <color name="md3_onPrimary">#FFFFFF</color>
+    <color name="md3_primaryContainer">#D1E4FF</color>
+    <color name="md3_onPrimaryContainer">#001D36</color>
+    
+    <color name="md3_secondary">#535F70</color>
+    <color name="md3_onSecondary">#FFFFFF</color>
+    <color name="md3_secondaryContainer">#D7E3F7</color>
+    <color name="md3_onSecondaryContainer">#101C2B</color>
+    
+    <color name="md3_tertiary">#6B5778</color>
+    <color name="md3_onTertiary">#FFFFFF</color>
+    <color name="md3_tertiaryContainer">#F2DAFF</color>
+    <color name="md3_onTertiaryContainer">#251431</color>
+    
+    <color name="md3_error">#BA1A1A</color>
+    <color name="md3_onError">#FFFFFF</color>
+    <color name="md3_errorContainer">#FFDAD6</color>
+    <color name="md3_onErrorContainer">#410002</color>
+    
+    <color name="md3_surface">#FDFCFF</color>
+    <color name="md3_onSurface">#1A1C1E</color>
+    <color name="md3_surfaceVariant">#DFE2EB</color>
+    <color name="md3_onSurfaceVariant">#43474E</color>
+    <color name="md3_outline">#73777F</color>
+    <color name="md3_outlineVariant">#C3C7CF</color>
+    
+    <!-- Dark theme variants -->
+    <color name="md3_surfaceDark">#1A1C1E</color>
+    <color name="md3_onSurfaceDark">#E2E2E6</color>
+    <color name="md3_surfaceVariantDark">#43474E</color>
+    <color name="md3_onSurfaceVariantDark">#C3C7CF</color>
+    <color name="md3_outlineDark">#8D9199</color>
+    <color name="md3_outlineVariantDark">#43474E</color>
+    
+    <!-- Status indicators -->
+    <color name="statusOnline">#4CAF50</color>
+    <color name="statusOffline">#9E9E9E</color>
+    <color name="statusWarning">#FF9800</color>
+    <color name="statusError">#F44336</color>
+    <color name="statusInfo">#2196F3</color>
+    
+    <!-- Card and component colors -->
+    <color name="cardElevation1">#FFFFFF</color>
+    <color name="cardElevation2">#FAFAFA</color>
+    <color name="cardElevation3">#F5F5F5</color>
+    <color name="cardElevation4">#EEEEEE</color>
+    
+    <!-- Divider and border colors -->
+    <color name="divider">#E0E0E0</color>
+    <color name="dividerDark">#424242</color>
+    <color name="border">#BDBDBD</color>
+    <color name="borderDark">#616161</color>
+    
+    <!-- Material Design 3 outline colors -->
+    <color name="colorOutline">#73777F</color>
+    <color name="colorOutlineVariant">#C3C7CF</color>
+</resources>

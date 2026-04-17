@@ -1,18 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import crypto from 'crypto';
 import { AuthService } from '../services/authService';
 import { TokenPayload, UserRole, RATE_LIMITS } from '../types/auth';
 
 const authService = new AuthService();
 
 // Extend Express Request type to include user
-declare global {
-  namespace Express {
-    interface Request {
-      user?: TokenPayload;
-    }
-  }
-}
+// Request type is declared in types/express.d.ts
 
 // JWT Authentication middleware
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
@@ -62,7 +57,7 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
       });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!allowedRoles.includes(req.user.role as UserRole)) {
       return res.status(403).json({ 
         error: 'Insufficient permissions',
         code: 'INSUFFICIENT_ROLE',
@@ -85,7 +80,7 @@ export const requirePermission = (resource: string, action: string) => {
       });
     }
 
-    const hasPermission = authService.hasPermission(req.user.role, resource, action);
+    const hasPermission = authService.hasPermission(req.user.role as UserRole, resource, action);
     if (!hasPermission) {
       return res.status(403).json({ 
         error: 'Insufficient permissions',
@@ -173,8 +168,11 @@ export const createRoleBasedRateLimit = () => {
       standardHeaders: true,
       legacyHeaders: false,
       keyGenerator: (req: Request) => {
-        // Use user ID for authenticated requests, IP for unauthenticated
-        return req.user ? `user:${req.user.userId}` : ipKeyGenerator(req.ip ?? 'unknown');
+        // Use user ID for authenticated requests, IP for unauthenticated (with IPv6 support)
+        if (req.user) {
+          return `user:${req.user.userId}`;
+        }
+        return ipKeyGenerator(req.ip || 'unknown');
       },
       skip: (req: Request) => {
         // Skip rate limiting for super admins
@@ -185,8 +183,8 @@ export const createRoleBasedRateLimit = () => {
 
   // Return middleware that applies appropriate rate limiter based on user role
   return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = req.user?.role || 'VIEWER'; // Default to most restrictive
-    const rateLimiter = limiters[userRole];
+    const userRole = (req.user?.role as UserRole) || 'VIEWER'; // Default to most restrictive
+    const rateLimiter = limiters[userRole as UserRole];
     
     if (rateLimiter) {
       return rateLimiter(req, res, next);

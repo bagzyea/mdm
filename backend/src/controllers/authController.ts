@@ -7,6 +7,9 @@ import {
   ChangePasswordRequest,
   ResetPasswordRequest 
 } from '../types/auth';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const authService = new AuthService();
 
@@ -242,15 +245,58 @@ export const getUsers = async (req: Request, res: Response) => {
     const { page = 1, limit = 10, role, isActive, search } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
-    // This would be implemented with proper Prisma queries
-    // For now, returning a placeholder response
+    // Build where clause for filtering
+    const whereClause: any = {};
+    
+    if (role && typeof role === 'string') {
+      whereClause.role = role;
+    }
+    
+    if (isActive !== undefined) {
+      whereClause.isActive = isActive === 'true';
+    }
+    
+    if (search && typeof search === 'string') {
+      whereClause.OR = [
+        { username: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Get total count
+    const total = await prisma.user.count({ where: whereClause });
+
+    // Get paginated users (exclude password field)
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      skip: offset,
+      take: Number(limit),
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        lastLogin: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const pages = Math.ceil(total / Number(limit));
+
     res.json({
-      users: [],
+      data: users,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: 0,
-        pages: 0
+        total,
+        pages
       }
     });
   } catch (error) {

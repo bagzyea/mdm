@@ -39,7 +39,7 @@ export const getAllPolicies = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      policies,
+      data: policies,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -115,18 +115,8 @@ export const createPolicy = async (req: Request, res: Response) => {
       await applyPolicyToDevices(policy.id, policyData.targetDevices);
     }
 
-    // Log policy creation event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: 'system', // System-level event
-        eventType: 'POLICY_CREATED',
-        eventData: {
-          policyId: policy.id,
-          policyName: policy.name,
-          policyType: policy.type
-        } as any
-      }
-    });
+    // TODO: Add system-level audit logging for policy creation
+    // Note: Removed DeviceEvent logging as it requires a valid deviceId
 
     res.status(201).json(policy);
   } catch (error) {
@@ -176,18 +166,8 @@ export const updatePolicy = async (req: Request, res: Response) => {
       await pushPolicyUpdates(updatedPolicy.id, updatedPolicy.devices.map(d => d.id));
     }
 
-    // Log policy update event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: 'system',
-        eventType: 'POLICY_UPDATED',
-        eventData: {
-          policyId: updatedPolicy.id,
-          policyName: updatedPolicy.name,
-          changes: updates
-        } as any
-      }
-    });
+    // TODO: Add system-level audit logging for policy updates
+    // Note: Removed DeviceEvent logging as it requires a valid deviceId
 
     res.json(updatedPolicy);
   } catch (error) {
@@ -229,18 +209,8 @@ export const deletePolicy = async (req: Request, res: Response) => {
     // Delete policy
     await prisma.policy.delete({ where: { id } });
 
-    // Log policy deletion event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: 'system',
-        eventType: 'POLICY_DELETED',
-        eventData: {
-          policyId: id,
-          policyName: policy.name,
-          forcedDeletion: !!force
-        } as any
-      }
-    });
+    // TODO: Add system-level audit logging for policy deletion
+    // Note: Removed DeviceEvent logging as it requires a valid deviceId
 
     res.status(204).send();
   } catch (error) {
