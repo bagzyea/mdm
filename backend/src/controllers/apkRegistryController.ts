@@ -80,6 +80,32 @@ export const getAPKs = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const getCompatibleAPKs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const deviceModels = req.query.deviceModels
+      ? String(req.query.deviceModels).split(',').map(m => m.trim()).filter(Boolean)
+      : [];
+
+    const apks = await prisma.aPKRegistry.findMany({
+      where: {
+        isActive: true,
+        ...(deviceModels.length > 0 && {
+          OR: [
+            { supportedDeviceModels: { isEmpty: true } }, // no restriction = compatible with all
+            { supportedDeviceModels: { hasSome: deviceModels } },
+          ]
+        })
+      },
+      orderBy: { uploadedAt: 'desc' }
+    });
+
+    const safeApks = apks.map(apk => ({ ...apk, fileSize: apk.fileSize.toString() }));
+    res.status(200).json({ apks: safeApks });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error fetching compatible APKs', error: error.message });
+  }
+};
+
 export const deleteAPK = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;

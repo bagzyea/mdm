@@ -74,7 +74,7 @@ interface ProfileFormData {
   geographicRules?: GeographicRules;
 }
 
-const _DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
+const DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
 const FILE_TYPES = ['CONFIG', 'FORM', 'DATA', 'CERTIFICATE', 'DOCUMENTATION', 'MEDIA', 'OTHER'];
 const _APN_CARRIERS = ['MTN', 'AIRTEL', 'CUSTOM'];
 const _NETWORK_TYPES = ['3G', '4G', '5G', 'AUTO'];

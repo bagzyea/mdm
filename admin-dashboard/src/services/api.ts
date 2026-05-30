@@ -713,6 +713,11 @@ class ApiService {
     return response.data;
   }
 
+  async getCompatibleAPKs(deviceModels: string[]): Promise<{ apks: any[] }> {
+    const response = await this.axiosInstance.get(`/apk-registry/compatible?deviceModels=${deviceModels.join(',')}`);
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<{ status: string; timestamp: string; environment: string }> {
     const response = await this.axiosInstance.get('/health');
@@ -789,6 +794,7 @@ export const apkVaultService = {
   upload: (formData: FormData): Promise<any> =>
     apiService.post('/apk-registry/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000, // 5 minutes for large APK uploads
     }),
 
   /** Permanently delete an APK and its file from the server */

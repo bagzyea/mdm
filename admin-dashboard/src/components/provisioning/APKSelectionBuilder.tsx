@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiService } from '../../services/api';
 import {
   Box,
   Card,
@@ -119,9 +120,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
   const fetchCompatibleAPKs = async () => {
     try {
       setLoading(true);
-      // Replace with actual API call
-      const response = await fetch(`/api/apk-registry/compatible?deviceModels=${deviceModels.join(',')}`);
-      const data = await response.json();
+      const data = await apiService.getCompatibleAPKs(deviceModels);
       setAvailableAPKs(data.apks || []);
     } catch (err) {
       setError('Failed to fetch compatible APKs');

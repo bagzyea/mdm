@@ -11,18 +11,20 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5000,
-    host: '0.0.0.0', // Allow external connections in Docker
+    port: 5002,
+    host: '0.0.0.0',
     strictPort: true,
-    allowedHosts: true, // Allow any host header (needed in Docker)
+    allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://mdm-backend:5001', // Use Docker service name
+        target: 'http://localhost:5001', // Use Docker service name
         changeOrigin: true,
-        secure: false
+        secure: false,
+        timeout: 300000,
+        proxyTimeout: 300000
       },
       '/health': {
-        target: 'http://mdm-backend:5001', // Use Docker service name
+        target: 'http://localhost:5001', // Use Docker service name
         changeOrigin: true,
         secure: false
       }
