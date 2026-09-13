@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import config from '../config/env';
+import prisma from '../db';
 
 /**
  * Device enrollment and credential lifecycle (findings F-02, F-13).
@@ -23,7 +23,6 @@ import config from '../config/env';
  * re-checked against device status on every use.
  */
 
-const prisma = new PrismaClient();
 
 /** Device statuses that must not be able to obtain or refresh a credential. */
 const REVOKED_DEVICE_STATUSES = new Set(['WIPED', 'SUSPENDED']);

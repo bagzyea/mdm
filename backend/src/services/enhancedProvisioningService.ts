@@ -1,11 +1,10 @@
-import { PrismaClient } from '@prisma/client';
 import { dataFolderService } from './dataFolderService';
+import prisma from '../db';
 import { 
   ProvisioningDeviceStatus,
   ProvisioningLog
 } from '../types';
 
-const prisma = new PrismaClient();
 
 export interface EnhancedProvisioningOptions {
   parallelLimit?: number;

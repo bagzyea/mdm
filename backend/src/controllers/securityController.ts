@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { SecurityStatus, ComplianceReport, ComplianceCheck, EncryptionPolicy } from '../types';
 import { notificationService } from '../services/notificationService';
 import logger from '../logger';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export const getSecurityStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {

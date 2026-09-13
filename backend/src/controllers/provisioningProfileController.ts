@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { 
   CreateProvisioningProfileRequest
 } from '../types';
 import { ProvisioningService } from '../services/provisioningService';
 import { definedOnly } from '../utils/prisma';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export const getAllProvisioningProfiles = async (req: Request, res: Response) => {
   try {

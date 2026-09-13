@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { 
   CreateProvisioningSessionRequest,
   StartProvisioningRequest,
@@ -7,8 +6,8 @@ import {
 } from '../types';
 import { provisioningService } from '../services/provisioningService';
 import { definedOnly } from '../utils/prisma';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export const getAllProvisioningSessions = async (req: Request, res: Response) => {
   try {

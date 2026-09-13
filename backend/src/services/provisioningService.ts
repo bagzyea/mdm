@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import {
   ProvisioningDeviceStatus,
   ProvisioningLog,
@@ -9,8 +8,8 @@ import { getCommandService } from './commandServiceInstance';
 import { definedOnly } from '../utils/prisma';
 import { signStoredApkReference } from './signedDownloads';
 import { CommandType } from '../types/commands';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 interface ProvisioningOptions {
   parallelLimit?: number;

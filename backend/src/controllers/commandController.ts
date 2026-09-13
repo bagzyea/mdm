@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { CreateCommandRequest, CommandResult, CommandType } from '../types/commands';
 import { getCommandService } from '../services/commandServiceInstance';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 // Get all commands with filtering and pagination
 export const getAllCommands = async (req: Request, res: Response): Promise<void> => {

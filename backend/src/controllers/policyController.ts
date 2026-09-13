@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { CreatePolicyRequest, UpdatePolicyRequest, PolicyRules } from '../types/policy';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 // Get all policies with pagination and filtering
 export const getAllPolicies = async (req: Request, res: Response) => {

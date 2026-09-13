@@ -1,13 +1,12 @@
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import { promisify } from 'util';
 import { pipeline } from 'stream';
+import prisma from '../db';
 
 const pipelineAsync = promisify(pipeline);
-const prisma = new PrismaClient();
 
 export interface DataFolderMapping {
   sourceFolder: string;

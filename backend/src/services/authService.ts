@@ -1,6 +1,5 @@
 import * as jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 import { 
   User, 
   CreateUserRequest, 
@@ -13,8 +12,8 @@ import {
 import config from '../config/env';
 import { redactSensitive } from '../utils/redact';
 import { definedOnly } from '../utils/prisma';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export class AuthService {
   private readonly JWT_SECRET = config.jwtSecret;

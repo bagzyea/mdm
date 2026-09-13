@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, APKCategory } from '@prisma/client';
+import { APKCategory } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -10,8 +10,8 @@ import {
   ApkInspectionError,
 } from '../services/apkInspector';
 import { signApkDownload } from '../services/signedDownloads';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 /** Remove a rejected upload so unverified APKs never linger in the served directory. */
 async function discardUpload(filePath: string): Promise<void> {

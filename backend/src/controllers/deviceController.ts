@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
 import { redactSensitive } from '../utils/redact';
 import { toJson, isPrismaError, errorMessage, definedOnly } from '../utils/prisma';
+import prisma from '../db';
 import {
   consumeEnrollmentToken,
   createEnrollmentToken,
@@ -12,7 +12,6 @@ import {
   EnrollmentError,
 } from '../services/enrollmentService';
 
-const prisma = new PrismaClient();
 
 export const getAllDevices = async (req: Request, res: Response) => {
   try {

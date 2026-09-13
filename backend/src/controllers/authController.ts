@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/authService';
+import prisma from '../db';
 import { 
   CreateUserRequest, 
   LoginRequest, 
@@ -7,9 +8,7 @@ import {
   ChangePasswordRequest,
   ResetPasswordRequest 
 } from '../types/auth';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 const authService = new AuthService();
 

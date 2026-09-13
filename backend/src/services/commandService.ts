@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { Server as SocketIOServer } from 'socket.io';
 import { CommandType, CreateCommandRequest, CommandResult } from '../types/commands';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export class CommandService {
   constructor(private io: SocketIOServer) { }

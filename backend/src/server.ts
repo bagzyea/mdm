@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
-import { PrismaClient } from '@prisma/client';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
@@ -12,13 +11,14 @@ import logger from './logger';
 // Imported for its side effect: validates required secrets and refuses to start without them.
 import './config/env';
 import { verifyApkDownload, InvalidDownloadSignature } from './services/signedDownloads';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { closeDatabase } from './db';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
 
 // Load environment variables
 dotenv.config();
 
 // Initialize Prisma client
-const prisma = new PrismaClient();
 
 // Create Express app
 const app = express();
@@ -189,6 +189,7 @@ import { initializeCommandService } from './services/commandServiceInstance';
 
 // Import notification service for email alerts (2.6)
 import { notificationService } from './services/notificationService';
+import prisma from './db';
 
 // Initialize command service
 const commandService = initializeCommandService(io);
@@ -715,13 +716,70 @@ io.on('connection', (socket) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Terminal middleware (finding F-24). Both must be mounted after every route.
+// ---------------------------------------------------------------------------
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 // Start server only when run as the entry point. Importing this module (as the route
 // authorization test does) must not bind a port or start accepting traffic.
 const PORT = process.env.PORT || 5001;
 
+/**
+ * Drain in-flight work before exiting (finding F-24).
+ *
+ * There was no SIGTERM handling, so a rolling deploy killed the process mid-request and
+ * dropped in-flight commands. This stops accepting new connections, closes the socket
+ * layer, releases the database pool, and only then exits — with a hard deadline so a
+ * stuck connection cannot block the deploy indefinitely.
+ */
+let shuttingDown = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  logger.info({ signal }, 'Shutting down');
+
+  const forceExit = setTimeout(() => {
+    logger.error('Shutdown timed out; forcing exit');
+    process.exit(1);
+  }, 15_000);
+  forceExit.unref();
+
+  try {
+    backgroundJobs.forEach((timer) => clearInterval(timer));
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await closeDatabase();
+
+    logger.info('Shutdown complete');
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (error) {
+    logger.error(error, 'Error during shutdown');
+    process.exit(1);
+  }
+}
+
 if (require.main === module) {
   server.listen(PORT, () => {
     logger.info({ port: PORT, environment: process.env.NODE_ENV }, 'MDM Backend server started');
+  });
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
+  // Without these, a rejected promise outside a request was silently swallowed on older
+  // Node versions and terminates the process without explanation on newer ones.
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ reason }, 'Unhandled promise rejection');
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.fatal(error, 'Uncaught exception — shutting down');
+    void shutdown('uncaughtException');
   });
 }
 

@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { CertificateRequest, Certificate, DeviceCertificate } from '../types';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { cryptoService } from '../services/cryptoService';
 import { definedOnly } from '../utils/prisma';
+import prisma from '../db';
 
-const prisma = new PrismaClient();
 
 export const getAllCertificates = async (req: Request, res: Response) => {
   try {
