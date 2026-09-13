@@ -3,10 +3,11 @@ import { PrismaClient } from '@prisma/client';
 import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
 import crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import config from '../config/env';
 
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
+const JWT_SECRET = config.jwtSecret;
 
 /**
  * Generate a JWT device token with role=DEVICE so that the server's
@@ -22,7 +23,7 @@ const generateDeviceToken = (deviceId: string): string => {
     },
     JWT_SECRET,
     {
-      expiresIn: '365d',
+      expiresIn: config.deviceTokenExpiresIn,
       issuer: 'mdm-system',
       audience: 'mdm-users',
     } as jwt.SignOptions

@@ -9,6 +9,8 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
 import logger from './logger';
+// Imported for its side effect: validates required secrets and refuses to start without them.
+import './config/env';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
 
 // Load environment variables
@@ -73,7 +75,7 @@ import deviceLifecycleRoutes from './routes/deviceLifecycleRoutes';
 import apkRegistryRoutes from './routes/apkRegistryRoutes';
 
 // Import authentication middleware
-import { authenticateToken, requirePermission, optionalAuth } from './middleware/auth';
+import { authenticateToken } from './middleware/auth';
 import { AuthService } from './services/authService';
 
 const authService = new AuthService();
@@ -97,53 +99,28 @@ app.use('/api/auth', authRoutes);
 const { enrollDevice } = require('./controllers/deviceController');
 app.post('/api/devices/enroll', enrollmentRateLimiter, enrollDevice);
 
-// Protected API routes (authentication required) 
-app.use('/api/devices',
-  authenticateToken,
-  requirePermission('devices', 'read'),
-  deviceRoutes
-);
-
-app.use('/api/policies',
-  authenticateToken,
-  requirePermission('policies', 'read'),
-  policyRoutes
-);
-
-app.use('/api/commands',
-  authenticateToken,
-  requirePermission('commands', 'read'),
-  commandRoutes
-);
-
-app.use('/api/certificates',
-  authenticateToken,
-  requirePermission('certificates', 'read'),
-  certificateRoutes
-);
-
-app.use('/api/security',
-  authenticateToken,
-  requirePermission('security', 'read'),
-  securityRoutes
-);
-
-app.use('/api/provisioning',
-  authenticateToken,
-  requirePermission('provisioning', 'read'),
-  provisioningRoutes
-);
-app.use('/api/lifecycle',
-  authenticateToken,
-  requirePermission('devices', 'read'),
-  deviceLifecycleRoutes
-);
-
-app.use('/api/apk-registry',
-  authenticateToken,
-  requirePermission('provisioning', 'write'),
-  apkRegistryRoutes
-);
+// Protected API routes.
+//
+// Mounts establish authentication only. Authorization is declared per route inside
+// each router, because a single permission check here was inherited by every route
+// beneath it: each router was mounted behind its ':read' permission and then exposed
+// full CRUD, so a VIEWER token could wipe, delete and re-policy the entire fleet.
+//
+// The mount for /api/apk-registry additionally asked for the action 'write', which
+// does not exist in ROLE_PERMISSIONS (the actions are create/read/update/delete), so
+// only SUPER_ADMIN's '*' wildcard matched and ADMIN/OPERATOR were locked out of the
+// whole APK subsystem. Both problems are fixed by moving the checks into the routers.
+//
+// src/__tests__/routeAuthorization.test.ts walks the mounted router stack and fails
+// if any route is missing an authorization guard, so this cannot silently regress.
+app.use('/api/devices', authenticateToken, deviceRoutes);
+app.use('/api/policies', authenticateToken, policyRoutes);
+app.use('/api/commands', authenticateToken, commandRoutes);
+app.use('/api/certificates', authenticateToken, certificateRoutes);
+app.use('/api/security', authenticateToken, securityRoutes);
+app.use('/api/provisioning', authenticateToken, provisioningRoutes);
+app.use('/api/lifecycle', authenticateToken, deviceLifecycleRoutes);
+app.use('/api/apk-registry', authenticateToken, apkRegistryRoutes);
 
 // Import command service
 import { initializeCommandService } from './services/commandServiceInstance';
@@ -155,12 +132,12 @@ import { notificationService } from './services/notificationService';
 const commandService = initializeCommandService(io);
 
 // Start command queue processor (runs every 30 seconds)
-setInterval(() => {
+const commandQueueTimer = setInterval(() => {
   commandService.processCommandQueue();
 }, 30000);
 
 // Device heartbeat monitoring - mark devices as inactive if no heartbeat
-setInterval(async () => {
+const heartbeatMonitorTimer = setInterval(async () => {
   try {
     const inactiveThreshold = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes
 
@@ -208,7 +185,7 @@ setInterval(async () => {
 }, 60000); // Check every minute
 
 // Certificate expiry check — runs once per hour (2.6)
-setInterval(async () => {
+const certificateExpiryTimer = setInterval(async () => {
   try {
     const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const expiringCerts = await prisma.certificate.findMany({
@@ -231,6 +208,17 @@ setInterval(async () => {
     logger.error(error, 'Error checking certificate expiry');
   }
 }, 60 * 60 * 1000); // Every hour
+
+// These background jobs are bare setInterval loops with no distributed lock, so the
+// server still cannot safely run as more than one instance (finding F-23). Here they are
+// only made controllable: cleared under test, and unref'd otherwise so they never keep a
+// process alive on their own — the listening socket does that in a real deployment.
+const backgroundJobs = [commandQueueTimer, heartbeatMonitorTimer, certificateExpiryTimer];
+if (process.env.NODE_ENV === 'test') {
+  backgroundJobs.forEach((timer) => clearInterval(timer));
+} else {
+  backgroundJobs.forEach((timer) => timer.unref());
+}
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
@@ -681,8 +669,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
+// Start server only when run as the entry point. Importing this module (as the route
+// authorization test does) must not bind a port or start accepting traffic.
 const PORT = process.env.PORT || 5001;
-server.listen(PORT, () => {
-  logger.info({ port: PORT, environment: process.env.NODE_ENV }, 'MDM Backend server started');
-});
+
+if (require.main === module) {
+  server.listen(PORT, () => {
+    logger.info({ port: PORT, environment: process.env.NODE_ENV }, 'MDM Backend server started');
+  });
+}
+
+export { app, server, io };
+export default app;

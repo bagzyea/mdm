@@ -10,12 +10,13 @@ import {
   UserRole,
   ROLE_PERMISSIONS
 } from '../types/auth';
+import config from '../config/env';
 
 const prisma = new PrismaClient();
 
 export class AuthService {
-  private readonly JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
-  private readonly JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+  private readonly JWT_SECRET = config.jwtSecret;
+  private readonly JWT_EXPIRES_IN = config.jwtExpiresIn;
   private readonly REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   // Generate JWT token

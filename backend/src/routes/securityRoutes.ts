@@ -7,16 +7,23 @@ import {
   enforceEncryptionPolicy,
   detectRootStatus
 } from '../controllers/securityController';
+import { requirePermission } from '../middleware/auth';
+
 const router = express.Router();
 
-// Authentication is handled at the server level
+// Authentication is applied at the mount point; authorization is per route.
+// Previously the whole router sat behind a single security:read check.
 
-// Security management routes
-router.get('/device/:deviceId/status', getSecurityStatus);
-router.put('/device/:deviceId/status', updateSecurityStatus);
-router.post('/device/:deviceId/compliance', runComplianceCheck);
-router.get('/device/:deviceId/compliance', getComplianceReports);
-router.post('/device/:deviceId/encryption', enforceEncryptionPolicy);
-router.post('/device/:deviceId/root-detection', detectRootStatus);
+router.get('/device/:deviceId/status', requirePermission('security', 'read'), getSecurityStatus);
+router.get('/device/:deviceId/compliance', requirePermission('security', 'read'), getComplianceReports);
+
+router.put('/device/:deviceId/status', requirePermission('security', 'update'), updateSecurityStatus);
+
+// Writes a new compliance report for the device.
+router.post('/device/:deviceId/compliance', requirePermission('security', 'create'), runComplianceCheck);
+
+// Both of these mutate SecurityStatus and dispatch a RemoteCommand to the device.
+router.post('/device/:deviceId/encryption', requirePermission('security', 'update'), enforceEncryptionPolicy);
+router.post('/device/:deviceId/root-detection', requirePermission('security', 'update'), detectRootStatus);
 
 export default router;

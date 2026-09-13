@@ -49,7 +49,9 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
 // Role-based authorization middleware
 export const requireRole = (...allowedRoles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  // Named (not anonymous) so src/__tests__/routeAuthorization.test.ts can detect this
+  // guard when walking the Express layer stack.
+  return function requireRoleMiddleware(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
       return res.status(401).json({ 
         error: 'Authentication required',
@@ -72,7 +74,9 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
 
 // Permission-based authorization middleware
 export const requirePermission = (resource: string, action: string) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  // Named (not anonymous) so src/__tests__/routeAuthorization.test.ts can detect this
+  // guard when walking the Express layer stack.
+  return function requirePermissionMiddleware(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
       return res.status(401).json({ 
         error: 'Authentication required',

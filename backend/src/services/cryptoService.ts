@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import config from '../config/env';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -14,18 +15,10 @@ export class CryptoService {
   private key: Buffer;
 
   constructor() {
-    const envKey = process.env.ENCRYPTION_KEY;
-    if (!envKey || envKey.length < 32) {
-      // Derive a deterministic key from JWT_SECRET as fallback so the
-      // service can start without a dedicated encryption key.
-      const fallback = process.env.JWT_SECRET || 'fallback-secret-key';
-      this.key = crypto.createHash('sha256').update(fallback).digest();
-    } else {
-      // Accept hex-encoded 32-byte key (64 hex chars) or raw 32-char string
-      this.key = envKey.length === 64
-        ? Buffer.from(envKey, 'hex')
-        : crypto.createHash('sha256').update(envKey).digest();
-    }
+    // Resolved and validated once, at boot, by src/config/env.ts. In production
+    // a real ENCRYPTION_KEY is mandatory; outside it, a domain-separated key is
+    // derived from JWT_SECRET. There is no literal fallback.
+    this.key = config.encryptionKey;
   }
 
   /**

@@ -1,10 +1,10 @@
 import express from 'express';
-import { 
-  getAllDevices, 
-  getDevice, 
-  enrollDevice, 
+import {
+  getAllDevices,
+  getDevice,
+  enrollDevice,
   generateEnrollmentCode,
-  sendCommand, 
+  sendCommand,
   updateDeviceStatus,
   deviceHeartbeat,
   updateDeviceAnalytics,
@@ -12,24 +12,43 @@ import {
   getDeviceHealthSummary,
   deleteDevice
 } from '../controllers/deviceController';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
 
-// Authentication is handled at the server level - no need to apply here
+// Authentication (authenticateToken) is applied where this router is mounted.
+// Authorization is declared per route below: the mount point previously carried a
+// single devices:read check, which every route inherited — so a VIEWER token could
+// reach DELETE /:deviceId and the command endpoint. Every route now states the
+// permission it actually requires.
 
-// Basic device operations
-router.get('/', getAllDevices);
-router.get('/:deviceId', getDevice);
-router.post('/enroll', enrollDevice);
-router.post('/enrollment-code', generateEnrollmentCode);
-router.post('/:deviceId/command', sendCommand);
-router.put('/:deviceId/status', updateDeviceStatus);
-router.post('/:deviceId/heartbeat', deviceHeartbeat);
-router.delete('/:deviceId', deleteDevice);
+// --- Reads ---
+router.get('/', requirePermission('devices', 'read'), getAllDevices);
+router.get('/health/summary', requirePermission('devices', 'read'), getDeviceHealthSummary);
+router.get('/:deviceId', requirePermission('devices', 'read'), getDevice);
+router.get('/:deviceId/analytics', requirePermission('devices', 'read'), getDeviceAnalytics);
 
-// Enhanced monitoring routes
-router.put('/:deviceId/analytics', updateDeviceAnalytics);
-router.get('/:deviceId/analytics', getDeviceAnalytics);
-router.get('/health/summary', getDeviceHealthSummary);
+// --- Enrollment ---
+// The unauthenticated enrollment path devices actually use is mounted separately in
+// server.ts. This authenticated variant lets an operator enroll on a device's behalf.
+router.post('/enroll', requirePermission('devices', 'create'), enrollDevice);
+router.post('/enrollment-code', requirePermission('devices', 'create'), generateEnrollmentCode);
+
+// --- Mutations ---
+// Dispatching a command is a commands action, not a devices one: guarding this with
+// devices:update would let a role with no command rights drive the fleet.
+router.post('/:deviceId/command', requirePermission('commands', 'create'), sendCommand);
+router.put('/:deviceId/status', requirePermission('devices', 'update'), updateDeviceStatus);
+router.put('/:deviceId/analytics', requirePermission('devices', 'update'), updateDeviceAnalytics);
+
+// Device-facing endpoint. The DEVICE role holds device-self permissions, not devices:*,
+// so this is unreachable for devices over HTTP today — it was equally unreachable under
+// the old devices:read mount. Devices report over the socket instead. Finding F-18
+// (no coherent device API surface) covers fixing this properly; this guard at least
+// stops a VIEWER forging heartbeats.
+router.post('/:deviceId/heartbeat', requirePermission('devices', 'update'), deviceHeartbeat);
+
+// --- Destructive ---
+router.delete('/:deviceId', requirePermission('devices', 'delete'), deleteDevice);
 
 export default router;

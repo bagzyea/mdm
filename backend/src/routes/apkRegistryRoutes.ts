@@ -36,8 +36,8 @@ const fileFilter = (req: any, file: any, cb: any) => {
 const upload = multer({ storage, fileFilter, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
 
 // API Routes
-router.get('/compatible', authenticateToken, getCompatibleAPKs);
-router.get('/', authenticateToken, getAPKs);
+router.get('/compatible', authenticateToken, requirePermission('provisioning', 'read'), getCompatibleAPKs);
+router.get('/', authenticateToken, requirePermission('provisioning', 'read'), getAPKs);
 router.post('/upload', authenticateToken, requirePermission('provisioning', 'create'), upload.single('apk'), uploadAPK);
 router.delete('/:id', authenticateToken, requirePermission('provisioning', 'delete'), deleteAPK);
 
