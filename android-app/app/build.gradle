@@ -22,6 +22,22 @@ def mdmHost = project.findProperty('mdmHost') ?: 'mdm.uboscare.com'
 def mdmPinPrimary = project.findProperty('mdmPinPrimary') ?: ''
 def mdmPinBackup = project.findProperty('mdmPinBackup') ?: ''
 
+// ---------------------------------------------------------------------------
+// Release signing (finding F-11). Release builds were unsigned — signingConfig was
+// commented out — which blocks distribution and, more importantly, blocks Device
+// Owner provisioning: the QR payload must carry the DPC's signature checksum, and
+// an unsigned APK has none.
+//
+// Credentials come from properties or the environment so the keystore is never
+// committed. In CI, set MDM_STORE_FILE/MDM_STORE_PASSWORD/MDM_KEY_ALIAS/
+// MDM_KEY_PASSWORD from secrets. See docs/KEYSTORE_SETUP.md.
+// ---------------------------------------------------------------------------
+def keystoreFile = project.findProperty('mdmStoreFile') ?: System.getenv('MDM_STORE_FILE')
+def keystorePassword = project.findProperty('mdmStorePassword') ?: System.getenv('MDM_STORE_PASSWORD')
+def keystoreAlias = project.findProperty('mdmKeyAlias') ?: System.getenv('MDM_KEY_ALIAS')
+def keystoreKeyPassword = project.findProperty('mdmKeyPassword') ?: System.getenv('MDM_KEY_PASSWORD')
+def hasSigningConfig = keystoreFile && keystorePassword && keystoreAlias && keystoreKeyPassword
+
 
 android {
     namespace 'com.mdm.app'
@@ -47,6 +63,21 @@ android {
         buildConfigField "String", "CERT_PIN_BACKUP", "\"${mdmPinBackup}\""
     }
 
+    signingConfigs {
+        release {
+            if (hasSigningConfig) {
+                storeFile file(keystoreFile)
+                storePassword keystorePassword
+                keyAlias keystoreAlias
+                keyPassword keystoreKeyPassword
+
+                // v2 signing is what Device Owner provisioning checksums against.
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
@@ -61,9 +92,10 @@ android {
             debuggable false
             buildConfigField "boolean", "DEBUG", "false"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            
-            // Sign with release keystore in production
-            // signingConfig signingConfigs.release
+
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     
@@ -131,6 +163,71 @@ tasks.matching { it.name.toLowerCase().contains('release') && it.name.startsWith
                 "set them in gradle.properties. See the comment at the top of app/build.gradle."
             )
         }
+
+        if (!hasSigningConfig) {
+            throw new GradleException(
+                "Release builds must be signed. An unsigned APK cannot be distributed and " +
+                "cannot be provisioned as Device Owner, because the QR payload needs the " +
+                "DPC signature checksum. Set mdmStoreFile/mdmStorePassword/mdmKeyAlias/" +
+                "mdmKeyPassword, or the MDM_STORE_* environment variables. " +
+                "See docs/KEYSTORE_SETUP.md."
+            )
+        }
+    }
+}
+
+/**
+ * Print the DPC signature checksum for the Device Owner provisioning QR payload.
+ *
+ * `android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM` is the URL-safe,
+ * unpadded base64 of the SHA-256 of the signing certificate. Getting it by hand is
+ * fiddly and easy to get wrong (hex vs base64, standard vs URL-safe alphabet), and a
+ * wrong checksum fails provisioning on the device with no useful diagnostic.
+ *
+ *   ./gradlew printProvisioningChecksum -PmdmStoreFile=... -PmdmStorePassword=... \
+ *       -PmdmKeyAlias=... -PmdmKeyPassword=...
+ */
+tasks.register('printProvisioningChecksum') {
+    description = 'Print the DPC signature checksum for the Device Owner QR payload.'
+    group = 'MDM'
+
+    doLast {
+        if (!hasSigningConfig) {
+            throw new GradleException(
+                "Signing configuration required. The checksum is derived from the release " +
+                "signing certificate, so an unsigned build has none."
+            )
+        }
+
+        def ks = java.security.KeyStore.getInstance('PKCS12')
+        def resolved = file(keystoreFile)
+        if (!resolved.exists()) {
+            // Fall back to JKS for older keystores created by keytool's default.
+            ks = java.security.KeyStore.getInstance('JKS')
+        }
+
+        try {
+            resolved.withInputStream { ks.load(it, keystorePassword.toCharArray()) }
+        } catch (Exception ignored) {
+            ks = java.security.KeyStore.getInstance('JKS')
+            resolved.withInputStream { ks.load(it, keystorePassword.toCharArray()) }
+        }
+
+        def cert = ks.getCertificate(keystoreAlias)
+        if (cert == null) {
+            throw new GradleException("No certificate found in keystore for alias '${keystoreAlias}'")
+        }
+
+        def digest = java.security.MessageDigest.getInstance('SHA-256').digest(cert.encoded)
+        def checksum = Base64.urlEncoder.withoutPadding().encodeToString(digest)
+
+        println ""
+        println "PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM"
+        println "  ${checksum}"
+        println ""
+        println "Put this in the QR payload as"
+        println "  \"android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM\": \"${checksum}\""
+        println ""
     }
 }
 
