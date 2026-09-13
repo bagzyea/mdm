@@ -3,10 +3,10 @@
     <!-- Custom Button Styles -->
     <style name="PrimaryButton" parent="Widget.MaterialComponents.Button">
         <item name="android:layout_height">56dp</item>
-        <item name="android:textColor">@color/white</item>
+        <item name="android:textColor">?attr/colorOnPrimary</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="backgroundTint">@color/colorPrimary</item>
+        <item name="backgroundTint">?attr/colorPrimary</item>
         <item name="cornerRadius">12dp</item>
         <item name="android:elevation">4dp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
@@ -14,9 +14,9 @@
 
     <style name="SecondaryButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:layout_height">48dp</item>
-        <item name="android:textColor">@color/colorPrimary</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
         <item name="android:textSize">14sp</item>
-        <item name="strokeColor">@color/colorPrimary</item>
+        <item name="strokeColor">?attr/colorPrimary</item>
         <item name="strokeWidth">2dp</item>
         <item name="cornerRadius">12dp</item>
         <item name="android:fontFamily">sans-serif</item>
@@ -26,7 +26,7 @@
     <style name="CustomCard" parent="Widget.MaterialComponents.CardView">
         <item name="cardCornerRadius">16dp</item>
         <item name="cardElevation">8dp</item>
-        <item name="cardBackgroundColor">@color/backgroundCard</item>
+        <item name="cardBackgroundColor">?attr/colorSurface</item>
         <item name="strokeWidth">0dp</item>
     </style>
 
@@ -34,14 +34,14 @@
     <style name="CardTitleText">
         <item name="android:textSize">18sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:textColor">@color/textPrimary</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:layout_marginBottom">4dp</item>
     </style>
 
     <style name="CardBodyText">
         <item name="android:textSize">14sp</item>
-        <item name="android:textColor">@color/textSecondary</item>
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
 </resources>

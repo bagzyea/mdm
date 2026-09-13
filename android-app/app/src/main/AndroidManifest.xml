@@ -52,9 +52,14 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
-    <!-- Device Management Permissions -->
-    <uses-permission android:name="android.permission.DEVICE_ADMIN" />
-    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
+    <!--
+        Device Management.
+
+        DEVICE_ADMIN is not a permission that exists, and BIND_DEVICE_ADMIN is granted
+        only to the system — it is declared on the receiver below (android:permission),
+        which is where it belongs. Requesting them here did nothing except make the
+        permission list misleading.
+    -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     
     <!-- System Permissions (require special handling) -->
@@ -71,7 +76,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DEVICE_ADMIN" />
+    <!--
+        Android 14 requires a permission matching each foregroundServiceType. The service
+        below declares dataSync, but the permission declared here was
+        FOREGROUND_SERVICE_DEVICE_ADMIN — which is not a real permission name. Starting
+        the service therefore threw on Android 14+, i.e. on most of the target fleet
+        (minSdk 30, targetSdk 35).
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     
     <!-- Optional Permissions (only if features are used) -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -169,10 +181,14 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
             
-        <!-- Firebase Messaging Service -->
+        <!--
+            Firebase Messaging. Must not be exported: the intent-filter is how FCM
+            delivers, and exporting it lets any app on the device send it fabricated
+            messages — which for an MDM agent means fabricated wake-ups and command polls.
+        -->
         <service
             android:name=".services.MDMFirebaseMessagingService"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>

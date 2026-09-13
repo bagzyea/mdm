@@ -3,7 +3,7 @@ package com.mdm.app.policy
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.util.Log
+import com.mdm.app.util.AgentLog
 
 /**
  * What this app is actually allowed to do (finding F-07).
@@ -60,7 +60,7 @@ object DevicePrivilege {
                 else -> PrivilegeLevel.NONE
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not determine privilege level", e)
+            AgentLog.w(TAG, "Could not determine privilege level", e)
             PrivilegeLevel.NONE
         }
     }

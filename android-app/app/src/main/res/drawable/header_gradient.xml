@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Flat brand colour rather than a three-stop gradient. On the TN panels these tablets
+    use, a dark-blue gradient bands visibly, and it bought nothing: the header carries
+    identity, not information.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient
-        android:type="linear"
-        android:angle="45"
-        android:startColor="@color/colorPrimary"
-        android:centerColor="@color/colorPrimaryDark"
-        android:endColor="@color/colorPrimaryDeep" />
+    <solid android:color="?attr/colorPrimary" />
 </shape>

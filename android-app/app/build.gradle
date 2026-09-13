@@ -4,6 +4,7 @@ plugins {
     id 'kotlin-kapt'
     id 'kotlin-parcelize'
     id 'com.google.gms.google-services'
+    id 'app.cash.paparazzi'
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +188,35 @@ tasks.matching { it.name.toLowerCase().contains('release') && it.name.startsWith
  *   ./gradlew printProvisioningChecksum -PmdmStoreFile=... -PmdmStorePassword=... \
  *       -PmdmKeyAlias=... -PmdmKeyPassword=...
  */
+/**
+ * Screenshot tests run only when asked for.
+ *
+ * Paparazzi renders real layouts on the JVM, which is how the UI is reviewed at all here
+ * — there is no emulator on the build host. But layoutlib cannot inflate every Material
+ * component (the status screen's toolbar among them), and it reports those as test
+ * failures even when the image renders correctly. Gating every build on that would fail
+ * for reasons unrelated to the code.
+ *
+ * So they are excluded from the normal unit-test run and invoked explicitly:
+ *
+ *   ./gradlew recordPaparazziDebug   render and save images to app/src/test/snapshots
+ *   ./gradlew verifyPaparazziDebug   compare against those images
+ */
+tasks.withType(Test).configureEach { testTask ->
+    def paparazziRun = gradle.startParameter.taskNames.any { it.toLowerCase().contains('paparazzi') }
+    if (paparazziRun) {
+        // One JVM per class. Paparazzi rules share layoutlib state within a JVM, and a
+        // second rule in the same process inflates nothing — the screens after the first
+        // rendered as empty grey boxes, which looks like a broken layout and is not one.
+        testTask.forkEvery = 1
+    } else {
+        testTask.filter {
+            excludeTestsMatching 'com.mdm.app.ui.*'
+            it.failOnNoMatchingTests = false
+        }
+    }
+}
+
 tasks.register('printProvisioningChecksum') {
     description = 'Print the DPC signature checksum for the Device Owner QR payload.'
     group = 'MDM'

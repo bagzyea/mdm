@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    UBOS MDM colour system — dark.
+
+    This file did not exist. The theme's parent is Theme.Material3.DayNight, so the app
+    claimed to support dark mode while every colour resolved to its light value — a
+    Theme.UBOSMDM.Dark style was defined but nothing ever selected it. On a tablet set to
+    dark mode, or one that switches at dusk, the result was a light UI with the system's
+    dark chrome around it.
+
+    Roles match values/colors.xml exactly. All pairings verified to the same AA bar.
+-->
+<resources>
+
+    <color name="primary">#A8C8FF</color>
+    <color name="onPrimary">#032E5F</color>
+    <color name="primaryContainer">#0B4F9E</color>
+    <color name="onPrimaryContainer">#D6E3F7</color>
+
+    <color name="secondary">#B7C6DC</color>
+    <color name="onSecondary">#22303F</color>
+    <color name="secondaryContainer">#394656</color>
+    <color name="onSecondaryContainer">#DCE4F0</color>
+
+    <color name="surface">#161A20</color>
+    <color name="onSurface">#E3E7EE</color>
+    <color name="surfaceVariant">#262C35</color>
+    <color name="onSurfaceVariant">#C2CAD6</color>
+    <color name="background">#0F1216</color>
+    <color name="onBackground">#E3E7EE</color>
+
+    <color name="outline">#8C95A2</color>
+    <color name="outlineVariant">#3A414B</color>
+
+    <color name="success">#7FD6A3</color>
+    <color name="onSuccess">#00391F</color>
+    <color name="successContainer">#123D26</color>
+    <color name="onSuccessContainer">#CFE9D9</color>
+
+    <color name="warning">#F2C078</color>
+    <color name="onWarning">#442A00</color>
+    <color name="warningContainer">#4A2F00</color>
+    <color name="onWarningContainer">#FBE6C8</color>
+
+    <color name="error">#F2B8B5</color>
+    <color name="onError">#601410</color>
+    <color name="errorContainer">#601410</color>
+    <color name="onErrorContainer">#F9DEDC</color>
+
+    <color name="neutralContainer">#262C35</color>
+    <color name="onNeutralContainer">#C2CAD6</color>
+
+    <color name="white">#FFFFFF</color>
+    <color name="scrim">#B3000000</color>
+    <!-- Status aliases. The Kotlin reasons in these names (statusOnline / statusWarning
+         / statusOffline); they resolve to the verified state colours above so the same
+         code is correct in light and dark. -->
+    <color name="statusOnline">@color/success</color>
+    <color name="statusWarning">@color/warning</color>
+    <color name="statusError">@color/error</color>
+    <color name="statusOffline">@color/outline</color>
+    <color name="statusInfo">@color/primary</color>
+</resources>

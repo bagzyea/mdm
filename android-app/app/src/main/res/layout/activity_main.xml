@@ -40,13 +40,14 @@
                     android:layout_width="64dp"
                     android:layout_height="64dp"
                     android:src="@drawable/ubos_logo"
-                    android:scaleType="centerCrop"
+                    android:contentDescription="@string/cd_ubos_logo"
+                    android:scaleType="fitCenter"
                     android:layout_marginBottom="12dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Company Portal"
+                    android:text="@string/app_title"
                     android:textAppearance="?attr/textAppearanceHeadlineMedium"
                     android:textColor="?attr/colorOnPrimary"
                     android:fontFamily="sans-serif-medium" />
@@ -54,7 +55,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="UBOS Secure Endpoint"
+                    android:text="@string/app_subtitle"
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:textColor="?attr/colorOnPrimary"
                     android:alpha="0.8"
@@ -85,56 +86,85 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Primary Compliance Status Card -->
+            <!--
+                Device status banner.
+
+                This was a 64dp circle whose only signal was its fill colour, with a vague
+                "Checking security..." beneath it. Colour alone fails colour-blind users
+                and is the first thing to wash out in direct sun, which is where these
+                tablets live. State is now carried three ways at once — an icon whose
+                shape differs per state, a headline in plain language, and a tinted
+                container — so it survives sunlight, colour blindness and a glance.
+            -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/statusCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="16dp"
-                app:strokeWidth="0dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="20dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:paddingTop="32dp"
-                    android:paddingBottom="24dp"
-                    android:paddingHorizontal="20dp">
+                    android:orientation="vertical">
 
-                    <View
-                        android:id="@+id/statusIndicator"
-                        android:layout_width="64dp"
-                        android:layout_height="64dp"
-                        android:background="@drawable/status_indicator"
-                        android:layout_marginBottom="16dp" />
-
-                    <TextView
-                        android:id="@+id/statusTextView"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Checking security..."
-                        android:textAlignment="center"
-                        android:textAppearance="?attr/textAppearanceTitleLarge"
-                        android:textColor="?attr/colorOnSurface"
-                        android:fontFamily="sans-serif-medium"
-                        android:layout_marginBottom="24dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <ImageView
+                            android:id="@+id/statusIndicator"
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:src="@drawable/ic_status_syncing"
+                            android:contentDescription="@string/status_icon_description"
+                            android:layout_marginEnd="20dp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statusTextView"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="@string/status_checking"
+                                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <TextView
+                                android:id="@+id/statusDetailTextView"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="@string/status_checking_detail"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
 
                     <com.google.android.material.progressindicator.LinearProgressIndicator
                         android:id="@+id/statusProgressBar"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
                         android:visibility="gone"
-                        android:indeterminate="true" />
-                        
+                        android:indeterminate="true"
+                        app:trackThickness="6dp" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/refreshStatusButton"
                         android:layout_width="match_parent"
-                        android:layout_height="54dp"
-                        android:text="Sync Device Settings"
-                        app:cornerRadius="12dp"
-                        app:icon="@android:drawable/ic_popup_sync"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="@string/action_sync_now"
+                        app:icon="@drawable/ic_status_syncing"
                         app:iconGravity="textStart" />
 
                 </LinearLayout>
@@ -142,130 +172,129 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!-- Corporate Apps Card -->
+            <!--
+                Actions and notices.
+
+                These were three cards of full-width centred buttons, styled with a light
+                blue fill and labelled in corporate-IT language. On a 10" tablet a centred
+                label in a 900dp-wide button sits nowhere near the finger that will press
+                it, and "Request IT App Install" is not a sentence a census enumerator has
+                a use for. Buttons are now left-aligned with leading icons, at the 56dp
+                minimum target the theme sets, on plain surfaces.
+            -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="16dp"
-                app:strokeWidth="0dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="20dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="vertical">
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Corporate Applications"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textColor="?attr/colorOnSurface"
+                        android:text="@string/apps_title"
+                        android:textAppearance="?attr/textAppearanceTitleLarge"
+                        android:fontFamily="sans-serif-medium"
                         android:layout_marginBottom="16dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/appInventoryButton"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="54dp"
-                        android:layout_marginBottom="8dp"
-                        android:text="View Installed Corporate Apps"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:minHeight="56dp"
                         app:cornerRadius="12dp"
-                        app:icon="@android:drawable/ic_menu_agenda" />
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="12dp"
+                        android:text="@string/apps_view_installed"
+                        android:gravity="start|center_vertical"
+                        app:icon="@drawable/ic_storage"
+                        app:iconGravity="textStart" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/requestAppButton"
                         style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="54dp"
-                        android:text="Request IT App Install"
+                        android:minHeight="56dp"
                         app:cornerRadius="12dp"
-                        app:icon="@android:drawable/ic_menu_add" />
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/apps_request"
+                        android:gravity="start|center_vertical"
+                        app:icon="@drawable/ic_device_enroll"
+                        app:iconGravity="textStart" />
 
                 </LinearLayout>
+
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Support & Info Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="16dp"
-                app:strokeWidth="0dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="20dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="vertical">
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="IT Helpdesk &amp; Info"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textColor="?attr/colorOnSurface"
+                        android:text="@string/support_title"
+                        android:textAppearance="?attr/textAppearanceTitleLarge"
+                        android:fontFamily="sans-serif-medium"
                         android:layout_marginBottom="16dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/getDeviceInfoButton"
-                        style="@style/Widget.Material3.Button.TextButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:minHeight="56dp"
+                        app:cornerRadius="12dp"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="View Device Hardware Info"
-                        app:icon="@android:drawable/ic_menu_info_details" />
+                        android:text="@string/support_device_info"
+                        android:gravity="start|center_vertical"
+                        app:icon="@drawable/ic_device_admin"
+                        app:iconGravity="textStart" />
 
                 </LinearLayout>
+
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- IT Messages & Alerts Card -->
+            <!-- Notices. Tinted as a container so it reads as information rather than as
+                 another thing to press. -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant"
-                app:strokeWidth="0dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="8dp"
+                app:cardBackgroundColor="?attr/colorSecondaryContainer"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="vertical">
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Latest IT Announcements"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginBottom="12dp" />
-
-                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-                        
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@android:drawable/ic_dialog_info"
-                            app:tint="?attr/colorPrimary"
-                            android:layout_marginEnd="12dp" />
+                        android:text="@string/support_notices_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:textColor="?attr/colorOnSecondaryContainer"
+                        android:fontFamily="sans-serif-medium"
+                        android:layout_marginBottom="8dp" />
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Your device is fully compliant. No actions required."
-                            android:textAppearance="?attr/textAppearanceBodyMedium"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
-                    </LinearLayout>
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/support_all_clear"
+                        android:textAppearance="?attr/textAppearanceBodyLarge"
+                        android:textColor="?attr/colorOnSecondaryContainer" />
 
                 </LinearLayout>
+
             </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>

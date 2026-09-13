@@ -1,6 +1,6 @@
 package com.mdm.app.policy
 
-import android.util.Log
+import com.mdm.app.util.AgentLog
 
 /**
  * Per-setting outcome recording for policy application (finding F-07).
@@ -34,7 +34,7 @@ class PolicyOutcome(
                 PolicyStatus.UNSUPPORTED,
                 DevicePrivilege.explain(held, requires)
             )
-            Log.w(TAG, "$policyName/$name not applied: insufficient privilege ($held < $requires)")
+            AgentLog.w(TAG, "$policyName/$name not applied: insufficient privilege ($held < $requires)")
             return
         }
 
@@ -45,10 +45,10 @@ class PolicyOutcome(
             // The platform refused despite the privilege check — report it rather than
             // letting the policy still claim success.
             settings += SettingOutcome(name, PolicyStatus.UNSUPPORTED, "refused by platform: ${e.message}")
-            Log.w(TAG, "$policyName/$name refused by platform", e)
+            AgentLog.w(TAG, "$policyName/$name refused by platform", e)
         } catch (e: Exception) {
             settings += SettingOutcome(name, PolicyStatus.ERROR, e.message ?: e::class.java.simpleName)
-            Log.e(TAG, "$policyName/$name failed", e)
+            AgentLog.e(TAG, "$policyName/$name failed", e)
         }
     }
 

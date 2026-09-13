@@ -1,105 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    UBOS MDM colour system — light.
+
+    Every pairing used for text meets WCAG AA (4.5:1); every pairing used for a UI
+    boundary or state indicator meets 3:1. That is not decoration: these tablets are used
+    outdoors in direct sun, and the previous palette failed 7 of 10 key pairings — the
+    "corporate apps" button was white text on #03DAC5 cyan at 1.77:1, which is
+    effectively unreadable anywhere, let alone in sunlight.
+
+    The Material-2 cyan accent is gone. It clashed with the UBOS blue and never passed.
+
+    A full md3_* palette used to be defined here and was never referenced by the theme,
+    which instead wired the older flat colours. There is now one set of names, and the
+    theme uses them.
+
+    Dark equivalents live in values-night/colors.xml. Keep the two in step: the theme is
+    DayNight, so anything defined here must have a counterpart there.
+-->
 <resources>
-    <!-- Primary Blue Colors -->
-    <color name="colorPrimary">#1565C0</color>
-    <color name="colorPrimaryDark">#0D47A1</color>
-    <color name="colorPrimaryDeep">#0A3D91</color>
-    <color name="colorPrimaryLight">#42A5F5</color>
-    
-    <!-- Accent Colors -->
-    <color name="colorAccent">#03DAC5</color>
-    <color name="colorSecondary">#00BCD4</color>
-    
-    <!-- Status Colors -->
-    <color name="colorSuccess">#4CAF50</color>
-    <color name="colorWarning">#FF9800</color>
-    <color name="colorError">#F44336</color>
-    <color name="colorInfo">#2196F3</color>
-    
-    <!-- Text Colors -->
-    <color name="textPrimary">#212121</color>
-    <color name="textSecondary">#757575</color>
-    <color name="textHint">#BDBDBD</color>
-    
-    <!-- Background Colors -->
-    <color name="backgroundPrimary">#FAFAFA</color>
-    <color name="backgroundCard">#FFFFFF</color>
-    <color name="backgroundOverlay">#80000000</color>
-    
-    <!-- White Variants -->
+
+    <!-- Brand -->
+    <color name="primary">#0B4F9E</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="primaryContainer">#D6E3F7</color>
+    <color name="onPrimaryContainer">#062A55</color>
+
+    <color name="secondary">#4A5C74</color>
+    <color name="onSecondary">#FFFFFF</color>
+    <color name="secondaryContainer">#DCE4F0</color>
+    <color name="onSecondaryContainer">#111C2B</color>
+
+    <!-- Surfaces -->
+    <color name="surface">#FFFFFF</color>
+    <color name="onSurface">#14181F</color>
+    <color name="surfaceVariant">#E6EAF1</color>
+    <color name="onSurfaceVariant">#414954</color>
+    <color name="background">#F6F8FB</color>
+    <color name="onBackground">#14181F</color>
+
+    <color name="outline">#6B7482</color>
+    <color name="outlineVariant">#C3CAD4</color>
+
+    <!-- State. Used for enrolment, connection and compliance, which are the only things
+         an enumerator in the field actually needs to read off this device. -->
+    <color name="success">#1B6B3F</color>
+    <color name="onSuccess">#FFFFFF</color>
+    <color name="successContainer">#CFE9D9</color>
+    <color name="onSuccessContainer">#0A2E1B</color>
+
+    <color name="warning">#8A5000</color>
+    <color name="onWarning">#FFFFFF</color>
+    <color name="warningContainer">#FBE6C8</color>
+    <color name="onWarningContainer">#3A2100</color>
+
+    <color name="error">#B3261E</color>
+    <color name="onError">#FFFFFF</color>
+    <color name="errorContainer">#F9DEDC</color>
+    <color name="onErrorContainer">#410E0B</color>
+
+    <color name="neutralContainer">#E6EAF1</color>
+    <color name="onNeutralContainer">#2A313B</color>
+
     <color name="white">#FFFFFF</color>
-    <color name="white_90">#E6FFFFFF</color>
-    <color name="white_70">#B3FFFFFF</color>
-    <color name="white_50">#80FFFFFF</color>
-    
-    <!-- Blue Gradients for Cards -->
-    <color name="blueGradientStart">#1976D2</color>
-    <color name="blueGradientEnd">#42A5F5</color>
-    
-    <!-- Dark Theme Colors -->
-    <color name="textPrimaryDark">#FFFFFF</color>
-    <color name="textSecondaryDark">#B3FFFFFF</color>
-    <color name="textHintDark">#80FFFFFF</color>
-    <color name="backgroundPrimaryDark">#121212</color>
-    <color name="backgroundCardDark">#1E1E1E</color>
-    <color name="backgroundSurfaceDark">#2D2D2D</color>
-    
-    <!-- Material Design 3 System Colors -->
-    <color name="md3_primary">#1565C0</color>
-    <color name="md3_onPrimary">#FFFFFF</color>
-    <color name="md3_primaryContainer">#D1E4FF</color>
-    <color name="md3_onPrimaryContainer">#001D36</color>
-    
-    <color name="md3_secondary">#535F70</color>
-    <color name="md3_onSecondary">#FFFFFF</color>
-    <color name="md3_secondaryContainer">#D7E3F7</color>
-    <color name="md3_onSecondaryContainer">#101C2B</color>
-    
-    <color name="md3_tertiary">#6B5778</color>
-    <color name="md3_onTertiary">#FFFFFF</color>
-    <color name="md3_tertiaryContainer">#F2DAFF</color>
-    <color name="md3_onTertiaryContainer">#251431</color>
-    
-    <color name="md3_error">#BA1A1A</color>
-    <color name="md3_onError">#FFFFFF</color>
-    <color name="md3_errorContainer">#FFDAD6</color>
-    <color name="md3_onErrorContainer">#410002</color>
-    
-    <color name="md3_surface">#FDFCFF</color>
-    <color name="md3_onSurface">#1A1C1E</color>
-    <color name="md3_surfaceVariant">#DFE2EB</color>
-    <color name="md3_onSurfaceVariant">#43474E</color>
-    <color name="md3_outline">#73777F</color>
-    <color name="md3_outlineVariant">#C3C7CF</color>
-    
-    <!-- Dark theme variants -->
-    <color name="md3_surfaceDark">#1A1C1E</color>
-    <color name="md3_onSurfaceDark">#E2E2E6</color>
-    <color name="md3_surfaceVariantDark">#43474E</color>
-    <color name="md3_onSurfaceVariantDark">#C3C7CF</color>
-    <color name="md3_outlineDark">#8D9199</color>
-    <color name="md3_outlineVariantDark">#43474E</color>
-    
-    <!-- Status indicators -->
-    <color name="statusOnline">#4CAF50</color>
-    <color name="statusOffline">#9E9E9E</color>
-    <color name="statusWarning">#FF9800</color>
-    <color name="statusError">#F44336</color>
-    <color name="statusInfo">#2196F3</color>
-    
-    <!-- Card and component colors -->
-    <color name="cardElevation1">#FFFFFF</color>
-    <color name="cardElevation2">#FAFAFA</color>
-    <color name="cardElevation3">#F5F5F5</color>
-    <color name="cardElevation4">#EEEEEE</color>
-    
-    <!-- Divider and border colors -->
-    <color name="divider">#E0E0E0</color>
-    <color name="dividerDark">#424242</color>
-    <color name="border">#BDBDBD</color>
-    <color name="borderDark">#616161</color>
-    
-    <!-- Material Design 3 outline colors -->
-    <color name="colorOutline">#73777F</color>
-    <color name="colorOutlineVariant">#C3C7CF</color>
+    <color name="scrim">#99000000</color>
+    <!-- Status aliases. The Kotlin reasons in these names (statusOnline / statusWarning
+         / statusOffline); they resolve to the verified state colours above so the same
+         code is correct in light and dark. -->
+    <color name="statusOnline">@color/success</color>
+    <color name="statusWarning">@color/warning</color>
+    <color name="statusError">@color/error</color>
+    <color name="statusOffline">@color/outline</color>
+    <color name="statusInfo">@color/primary</color>
 </resources>

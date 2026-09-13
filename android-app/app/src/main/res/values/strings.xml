@@ -32,4 +32,57 @@
     <string name="status_installed">INSTALLED</string>
     <string name="status_failed">FAILED</string>
     <string name="status_cancelled">CANCELLED</string>
+    <!--
+        Field-facing copy.
+
+        The screen previously read "Company Portal", "Corporate Applications",
+        "IT Helpdesk & Info", "Request IT App Install" and "Latest IT Announcements" —
+        the language of a corporate BYOD portal. The person holding this tablet is a
+        census enumerator, not an office employee with an IT department: they want to
+        know whether the device is working and whether they can carry on, in words that
+        mean something to them.
+
+        These strings were also hardcoded in the layouts (53 of them), so they could not
+        be translated. Uganda's census is conducted in several languages; extracting them
+        is the precondition for ever shipping a values-lg or values-sw.
+    -->
+    <string name="app_title">UBOS Census Device</string>
+    <string name="app_subtitle">Managed by Uganda Bureau of Statistics</string>
+
+    <!-- Device status -->
+    <string name="status_checking">Checking device…</string>
+    <string name="status_checking_detail">Confirming this device is registered and up to date.</string>
+    <string name="status_ready">Device ready</string>
+    <string name="status_ready_detail">Registered and connected. You can continue your work.</string>
+    <string name="status_offline">Working offline</string>
+    <string name="status_offline_detail">No network right now. Your work is saved and will sync when you have signal.</string>
+    <string name="status_attention">Needs attention</string>
+    <string name="status_attention_detail">Report this device to your supervisor.</string>
+    <string name="status_icon_description">Device status</string>
+
+    <string name="action_sync_now">Check for updates</string>
+
+    <!-- Device health -->
+    <string name="health_title">This device</string>
+    <string name="health_battery">Battery</string>
+    <string name="health_storage">Storage</string>
+    <string name="health_memory">Memory</string>
+    <string name="health_charging">Charging</string>
+
+    <!-- Applications -->
+    <string name="apps_title">Census apps</string>
+    <string name="apps_view_installed">See apps on this device</string>
+    <string name="apps_request">Ask for an app to be added</string>
+
+    <!-- Support -->
+    <string name="support_title">Help</string>
+    <string name="support_device_info">Show device details</string>
+    <string name="support_notices_title">Notices</string>
+    <string name="support_all_clear">No action needed. This device is set up correctly.</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_ubos_logo">Uganda Bureau of Statistics</string>
+    <string name="cd_battery">Battery level</string>
+    <string name="cd_storage">Storage used</string>
+    <string name="cd_memory">Memory used</string>
 </resources>

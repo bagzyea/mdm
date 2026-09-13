@@ -68,7 +68,9 @@ class MainActivity : AppCompatActivity() {
     private var healthMetricsRefreshJob: Job? = null
     
     // UI Components
-    private lateinit var statusIndicator: View
+    private lateinit var statusIndicator: android.widget.ImageView
+    private lateinit var statusDetailTextView: TextView
+    private lateinit var statusCard: com.google.android.material.card.MaterialCardView
     private lateinit var statusTextView: TextView
     private lateinit var statusProgressBar: LinearProgressIndicator
 
@@ -156,6 +158,8 @@ class MainActivity : AppCompatActivity() {
         // Initialize UI components
         statusIndicator = binding.statusIndicator
         statusTextView = binding.statusTextView
+        statusDetailTextView = binding.statusDetailTextView
+        statusCard = binding.statusCard
         statusProgressBar = binding.statusProgressBar
 
         // Initialize device health metrics UI components
@@ -283,31 +287,71 @@ class MainActivity : AppCompatActivity() {
         refreshStatusButton.isEnabled = true
     }
     
-    private fun updateStatus(message: String, type: StatusType = StatusType.INFO) {
+    /**
+     * Show device state.
+     *
+     * State is expressed three ways at once — icon shape, plain-language text, and a
+     * tinted container. It used to be a coloured circle and a terse line ("Checking
+     * security..."), which is unreadable in direct sun and invisible to a colour-blind
+     * enumerator: colour was the only signal.
+     *
+     * @param message the headline. Short, and about the device, not about the software.
+     * @param detail what it means for the person holding the tablet, and what to do.
+     */
+    private fun updateStatus(
+        message: String,
+        type: StatusType = StatusType.INFO,
+        detail: String? = null
+    ) {
         runOnUiThread {
             statusTextView.text = message
-            updateStatusIndicator(type)
+            detail?.let { statusDetailTextView.text = it }
+            applyStatusAppearance(type)
             Log.i(TAG, "Status: $message")
         }
     }
-    
-    private fun updateStatusIndicator(type: StatusType) {
-        val color = when (type) {
-            StatusType.SUCCESS -> ContextCompat.getColor(this, R.color.statusOnline)
-            StatusType.WARNING -> ContextCompat.getColor(this, R.color.statusWarning)
-            StatusType.ERROR -> ContextCompat.getColor(this, R.color.statusError)
-            StatusType.INFO -> ContextCompat.getColor(this, R.color.statusInfo)
+
+    private fun applyStatusAppearance(type: StatusType) {
+        val (iconRes, containerColor, contentColor) = when (type) {
+            StatusType.SUCCESS -> Triple(
+                R.drawable.ic_status_ok, R.color.successContainer, R.color.onSuccessContainer
+            )
+            StatusType.WARNING -> Triple(
+                R.drawable.ic_status_warning, R.color.warningContainer, R.color.onWarningContainer
+            )
+            StatusType.ERROR -> Triple(
+                R.drawable.ic_status_error, R.color.errorContainer, R.color.onErrorContainer
+            )
+            StatusType.INFO -> Triple(
+                R.drawable.ic_status_syncing, R.color.neutralContainer, R.color.onNeutralContainer
+            )
         }
-        statusIndicator.setBackgroundColor(color)
+
+        val content = ContextCompat.getColor(this, contentColor)
+
+        statusIndicator.setImageResource(iconRes)
+        statusIndicator.imageTintList = android.content.res.ColorStateList.valueOf(content)
+        statusCard.setCardBackgroundColor(ContextCompat.getColor(this, containerColor))
+        statusTextView.setTextColor(content)
+        statusDetailTextView.setTextColor(content)
     }
-    
+
     private fun updateStatusIndicator(isConnected: Boolean) {
-        val color = if (isConnected) {
-            ContextCompat.getColor(this, R.color.statusOnline)
+        if (isConnected) {
+            updateStatus(
+                getString(R.string.status_ready),
+                StatusType.SUCCESS,
+                getString(R.string.status_ready_detail)
+            )
         } else {
-            ContextCompat.getColor(this, R.color.statusOffline)
+            // Offline is normal in the field, not a fault: an enumerator out of coverage
+            // has done nothing wrong and should not be shown an error.
+            updateStatus(
+                getString(R.string.status_offline),
+                StatusType.WARNING,
+                getString(R.string.status_offline_detail)
+            )
         }
-        statusIndicator.setBackgroundColor(color)
     }
     
     private fun showProgress(show: Boolean) {
