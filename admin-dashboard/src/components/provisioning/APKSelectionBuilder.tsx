@@ -38,7 +38,6 @@ import {
   Apps as AppsIcon,
   Folder as FolderIcon
 } from '@mui/icons-material';
-
 interface APK {
   id: string;
   packageName: string;
@@ -53,7 +52,6 @@ interface APK {
   supportedDeviceModels: string[];
   dataFolders: DataFolder[];
 }
-
 interface DataFolder {
   id: string;
   name: string;
@@ -65,7 +63,6 @@ interface DataFolder {
   geographicScope?: string;
   applicableDistricts: string[];
 }
-
 interface SelectedAPK {
   apkId: string;
   apk: APK;
@@ -74,7 +71,6 @@ interface SelectedAPK {
   isRequired: boolean;
   customConfiguration?: any;
 }
-
 interface APKSelectionBuilderProps {
   deviceModels: string[];
   deviceLocation?: {
@@ -84,7 +80,6 @@ interface APKSelectionBuilderProps {
   onSelectionChange: (selectedAPKs: SelectedAPK[]) => void;
   initialSelection?: SelectedAPK[];
 }
-
 export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
   deviceModels,
   deviceLocation,
@@ -108,15 +103,12 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
     'ALL', 'CENSUS', 'PRODUCTIVITY', 'UTILITY', 'COMMUNICATION', 
     'MEDIA', 'EDUCATION', 'GOVERNMENT', 'CUSTOM'
   ];
-
   useEffect(() => {
     fetchCompatibleAPKs();
   }, [deviceModels]);
-
   useEffect(() => {
     onSelectionChange(selectedAPKs);
   }, [selectedAPKs, onSelectionChange]);
-
   const fetchCompatibleAPKs = async () => {
     try {
       setLoading(true);
@@ -128,10 +120,8 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       setLoading(false);
     }
   };
-
   const handleAPKSelection = (apk: APK) => {
     const isSelected = selectedAPKs.some(selected => selected.apkId === apk.id);
-    
     if (isSelected) {
       // Remove APK
       setSelectedAPKs(prev => prev.filter(selected => selected.apkId !== apk.id));
@@ -141,7 +131,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
         folder.isRequired && 
         isDataFolderCompatible(folder, deviceLocation)
       );
-      
       setDetailsDialog({
         open: true,
         apk,
@@ -149,7 +138,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       });
     }
   };
-
   const handleDataFolderSelection = (apk: APK, selectedFolders: string[]) => {
     const newAPKSelection: SelectedAPK = {
       apkId: apk.id,
@@ -159,11 +147,9 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       isRequired: true,
       customConfiguration: {}
     };
-
     setSelectedAPKs(prev => [...prev, newAPKSelection]);
     setDetailsDialog({ open: false });
   };
-
   const handleEditSelection = (apkId: string) => {
     const selected = selectedAPKs.find(s => s.apkId === apkId);
     if (selected) {
@@ -174,31 +160,24 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       });
     }
   };
-
   const handleRemoveSelection = (apkId: string) => {
     setSelectedAPKs(prev => prev.filter(s => s.apkId !== apkId));
   };
-
   const isDataFolderCompatible = (folder: DataFolder, location?: { district: string; region: string }): boolean => {
     if (!folder.geographicScope || folder.geographicScope === 'ALL') {
       return true;
     }
-
     if (!location) {
       return false;
     }
-
     if (folder.geographicScope === 'DISTRICT_SPECIFIC') {
       return folder.applicableDistricts.includes(location.district);
     }
-
     if (folder.geographicScope === 'REGION_SPECIFIC') {
       return folder.applicableDistricts.includes(location.region);
     }
-
     return true;
   };
-
   const calculateTotalSize = (): number => {
     return selectedAPKs.reduce((total, selected) => {
       const apkSize = selected.apk.fileSize;
@@ -209,7 +188,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       return total + apkSize + dataSize;
     }, 0);
   };
-
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -217,17 +195,13 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-
   const filteredAPKs = availableAPKs.filter(apk => {
     const matchesSearch = apk.appName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          apk.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          apk.packageName.toLowerCase().includes(searchTerm.toLowerCase());
-    
     const matchesCategory = categoryFilter === 'ALL' || apk.category === categoryFilter;
-    
     return matchesSearch && matchesCategory;
   });
-
   if (loading) {
     return (
       <Card>
@@ -240,7 +214,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
       </Card>
     );
   }
-
   return (
     <Box>
       {/* Header */}
@@ -306,7 +279,6 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
                   const compatibleFolders = apk.dataFolders.filter(folder =>
                     isDataFolderCompatible(folder, deviceLocation)
                   );
-                  
                   return (
                     <ListItem key={apk.id} divider>
                       <ListItemIcon>
@@ -458,7 +430,7 @@ export const APKSelectionBuilder: React.FC<APKSelectionBuilderProps> = ({
           {detailsDialog.apk && (
             <DataFolderSelector
               apk={detailsDialog.apk}
-              deviceLocation={deviceLocation}
+              {...(deviceLocation ? { deviceLocation } : {})}
               initialSelection={detailsDialog.selectedFolders || []}
               onSelectionChange={(folders) => 
                 setDetailsDialog(prev => ({ ...prev, selectedFolders: folders }))
@@ -492,18 +464,15 @@ const DataFolderSelector: React.FC<{
   deviceLocation?: { district: string; region: string };
   initialSelection: string[];
   onSelectionChange: (folders: string[]) => void;
-}> = ({ apk, deviceLocation, initialSelection, onSelectionChange }) => {
+}> = ({ apk, initialSelection, onSelectionChange }) => {
   const [selectedFolders, setSelectedFolders] = useState<string[]>(initialSelection);
-
   const handleFolderToggle = (folderId: string) => {
     const newSelection = selectedFolders.includes(folderId)
       ? selectedFolders.filter(id => id !== folderId)
       : [...selectedFolders, folderId];
-    
     setSelectedFolders(newSelection);
     onSelectionChange(newSelection);
   };
-
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -514,13 +483,10 @@ const DataFolderSelector: React.FC<{
 
   // Group folders by type
   const groupedFolders = apk.dataFolders.reduce((acc, folder) => {
-    if (!acc[folder.folderType]) {
-      acc[folder.folderType] = [];
-    }
-    acc[folder.folderType].push(folder);
+    const bucket = acc[folder.folderType] ?? (acc[folder.folderType] = []);
+    bucket.push(folder);
     return acc;
   }, {} as Record<string, DataFolder[]>);
-
   return (
     <Box>
       <Typography variant="body1" gutterBottom>
@@ -582,5 +548,4 @@ const DataFolderSelector: React.FC<{
     </Box>
   );
 };
-
 export default APKSelectionBuilder;

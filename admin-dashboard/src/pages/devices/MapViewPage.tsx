@@ -33,7 +33,6 @@ import {
 import {
   LocationOn,
   Smartphone,
-  Battery90,
   Visibility,
   VisibilityOff,
   Refresh,
@@ -76,16 +75,13 @@ const createCustomIcon = (status: DeviceStatus, batteryLevel: number) => {
         return '#6b7280';
     }
   };
-
   const getBatteryColor = (level: number) => {
     if (level <= 20) return '#ef4444'; // red
     if (level <= 50) return '#f59e0b'; // yellow
     return '#10b981'; // green
   };
-
   const statusColor = getStatusColor(status);
   const batteryColor = getBatteryColor(batteryLevel);
-
   const svgIcon = `
     <svg width="32" height="40" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
       <!-- Phone body -->
@@ -99,7 +95,6 @@ const createCustomIcon = (status: DeviceStatus, batteryLevel: number) => {
       <text x="20" y="7" text-anchor="middle" font-size="6" fill="white" font-weight="bold">${batteryLevel}</text>
     </svg>
   `;
-
   return L.divIcon({
     html: svgIcon,
     className: 'custom-device-marker',
@@ -151,7 +146,6 @@ const MapControls: React.FC<{
 // Map center control component
 const MapCenterControl: React.FC<{ devices: Device[] }> = ({ devices }) => {
   const map = useMap();
-
   const fitBounds = useCallback(() => {
     const devicesWithLocation = devices.filter(d => d.location?.latitude && d.location?.longitude);
     if (devicesWithLocation.length > 0) {
@@ -161,14 +155,11 @@ const MapCenterControl: React.FC<{ devices: Device[] }> = ({ devices }) => {
       map.fitBounds(bounds, { padding: [20, 20] });
     }
   }, [devices, map]);
-
   React.useEffect(() => {
     fitBounds();
   }, [fitBounds]);
-
   return null;
 };
-
 const MapViewPage: React.FC = () => {
   const { hasPermission } = useAuthContext();
   const [devices, setDevices] = useState<Device[]>([]);
@@ -182,12 +173,10 @@ const MapViewPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<DeviceStatus | 'ALL'>('ALL');
   const [showOfflineDevices, setShowOfflineDevices] = useState(true);
   const [mapLayer, setMapLayer] = useState<'streets' | 'satellite'>('streets');
-
   const fetchDevices = async () => {
     try {
       setLoading(true);
       const response = await apiService.getDevices({ limit: 1000 });
-      
       let devicesList: any[] = [];
       if (Array.isArray(response)) {
         devicesList = response;
@@ -196,7 +185,6 @@ const MapViewPage: React.FC = () => {
       } else if (response.devices && Array.isArray(response.devices)) {
         devicesList = response.devices;
       }
-
       const mappedDevices: Device[] = devicesList.map((device: any) => ({
         id: device.id || 'unknown',
         deviceId: device.deviceId || device.id || 'unknown',
@@ -224,7 +212,6 @@ const MapViewPage: React.FC = () => {
         appUsageStats: device.appUsageStats,
         systemHealth: device.systemHealth,
       }));
-      
       setDevices(mappedDevices);
       setError(null);
     } catch (err: any) {
@@ -233,7 +220,6 @@ const MapViewPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchDevices();
   }, []);
@@ -250,7 +236,6 @@ const MapViewPage: React.FC = () => {
       if (!showOfflineDevices && (!device.location?.latitude || !device.location?.longitude)) {
         return false;
       }
-      
       return true;
     });
   }, [devices, statusFilter, showOfflineDevices]);
@@ -267,25 +252,20 @@ const MapViewPage: React.FC = () => {
     if (devicesWithLocation.length === 0) {
       return [0.3476, 32.5825]; // Uganda center as default
     }
-    
     const avgLat = devicesWithLocation.reduce((sum, device) => 
       sum + device.location!.latitude, 0) / devicesWithLocation.length;
     const avgLng = devicesWithLocation.reduce((sum, device) => 
       sum + device.location!.longitude, 0) / devicesWithLocation.length;
-    
     return [avgLat, avgLng];
   }, [devicesWithLocation]);
-
   const handleDeviceSelect = (device: Device) => {
     setSelectedDevice(device);
     setOpenDialog(true);
   };
-
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setSelectedDevice(null);
   };
-
   const getStatusColor = (status: DeviceStatus) => {
     switch (status) {
       case 'ENROLLED':
@@ -301,7 +281,6 @@ const MapViewPage: React.FC = () => {
         return 'default';
     }
   };
-
   const formatLastSeen = (lastSeen: string) => {
     const now = new Date();
     const lastSeenDate = new Date(lastSeen);
@@ -309,21 +288,17 @@ const MapViewPage: React.FC = () => {
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 5) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${diffDays}d ago`;
   };
-
   const tileLayerUrl = mapLayer === 'satellite' 
     ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
   const tileLayerAttribution = mapLayer === 'satellite'
     ? '&copy; <a href="https://www.esri.com/">Esri</a>'
     : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
   if (!hasPermission('devices', 'view')) {
     return (
       <Box sx={{ p: 3 }}>
@@ -333,7 +308,6 @@ const MapViewPage: React.FC = () => {
       </Box>
     );
   }
-
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
       {/* Header */}
@@ -703,5 +677,4 @@ const MapViewPage: React.FC = () => {
     </Box>
   );
 };
-
 export default MapViewPage;

@@ -4,14 +4,12 @@ import {
   Typography,
   Button,
   Card,
-  CardContent,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   IconButton,
   Dialog,
@@ -50,7 +48,6 @@ import {
 } from '@mui/icons-material';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
-
 interface Policy {
   id: string;
   name: string;
@@ -64,7 +61,6 @@ interface Policy {
   rules: any;
   complianceRate: number;
 }
-
 interface PolicyFormData {
   name: string;
   description: string;
@@ -74,13 +70,11 @@ interface PolicyFormData {
   targetDevices: string[];
   targetGroups: string[];
 }
-
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
 }
-
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
   return (
@@ -89,7 +83,6 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
-
 const PoliciesPage: React.FC = () => {
   const { hasPermission } = useAuthContext();
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -107,7 +100,6 @@ const PoliciesPage: React.FC = () => {
     targetDevices: [],
     targetGroups: [],
   });
-
   const defaultRules: Record<string, any> = {
     SECURITY: {
       passwordRequired: true,
@@ -171,12 +163,10 @@ const PoliciesPage: React.FC = () => {
       locationTrackingEnabled: true,
     },
   };
-
   const fetchPolicies = async () => {
     try {
       setLoading(true);
       console.log('🔄 Fetching policies...');
-      
       const policiesData = await apiService.getPolicies({ limit: 100 });
       console.log('📋 Policies fetched:', { 
         count: policiesData.data?.length || 0, 
@@ -198,7 +188,6 @@ const PoliciesPage: React.FC = () => {
         rules: policy.rules,
         complianceRate: 0 // Would need to be calculated
       }));
-      
       setPolicies(mappedPolicies);
       setError(null);
       console.log('✅ Policies loaded successfully:', mappedPolicies.length);
@@ -209,11 +198,9 @@ const PoliciesPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchPolicies();
   }, []);
-
   const handleCreatePolicy = async () => {
     try {
       console.log('🔄 Creating policy:', formData.name);
@@ -227,10 +214,8 @@ const PoliciesPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to create policy');
     }
   };
-
   const handleUpdatePolicy = async () => {
     if (!editingPolicy) return;
-
     try {
       console.log('🔄 Updating policy:', editingPolicy.id);
       await apiService.updatePolicy(editingPolicy.id, formData);
@@ -243,10 +228,8 @@ const PoliciesPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to update policy');
     }
   };
-
   const handleDeletePolicy = async (policyId: string) => {
     if (!window.confirm('Are you sure you want to delete this policy?')) return;
-
     try {
       console.log('🔄 Deleting policy:', policyId);
       await apiService.deletePolicy(policyId);
@@ -258,7 +241,6 @@ const PoliciesPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to delete policy');
     }
   };
-
   const handleToggleActive = async (policyId: string, isActive: boolean) => {
     try {
       await apiService.put(`/policies/${policyId}/status`, { isActive: !isActive });
@@ -268,7 +250,6 @@ const PoliciesPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to update policy status');
     }
   };
-
   const handleOpenDialog = (policy?: Policy) => {
     if (policy) {
       setEditingPolicy(policy);
@@ -295,12 +276,10 @@ const PoliciesPage: React.FC = () => {
     }
     setOpenDialog(true);
   };
-
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingPolicy(null);
   };
-
   const handleTypeChange = (type: 'SECURITY' | 'NETWORK' | 'APPLICATION' | 'COMPLIANCE' | 'HARDWARE' | 'SYSTEM') => {
     setFormData({
       ...formData,
@@ -308,22 +287,18 @@ const PoliciesPage: React.FC = () => {
       rules: defaultRules[type],
     });
   };
-
   const handleRuleChange = (rulePath: string, value: any) => {
     const newRules = { ...formData.rules };
     const keys = rulePath.split('.');
     let current = newRules;
-    
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i] as string;
       if (!current[key]) current[key] = {};
       current = current[key];
     }
-    
     current[keys[keys.length - 1] as string] = value;
     setFormData({ ...formData, rules: newRules });
   };
-
   const getPolicyTypeIcon = (type: string) => {
     switch (type) {
       case 'SECURITY': return <Security />;
@@ -335,7 +310,6 @@ const PoliciesPage: React.FC = () => {
       default: return <Security />;
     }
   };
-
   const getPolicyTypeColor = (type: string) => {
     switch (type) {
       case 'SECURITY': return 'error';
@@ -347,7 +321,6 @@ const PoliciesPage: React.FC = () => {
       default: return 'default';
     }
   };
-
   const renderSecurityRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -397,7 +370,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderNetworkRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -458,7 +430,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderApplicationRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -518,7 +489,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderHardwareRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -538,7 +508,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderSystemRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -575,7 +544,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderComplianceRules = () => (
     <Grid container spacing={2}>
       <Grid item xs={12} sm={6}>
@@ -640,7 +608,6 @@ const PoliciesPage: React.FC = () => {
       </Grid>
     </Grid>
   );
-
   const renderRulesForm = () => {
     switch (formData.type) {
       case 'SECURITY':
@@ -659,9 +626,7 @@ const PoliciesPage: React.FC = () => {
         return null;
     }
   };
-
   const canManagePolicies = hasPermission('policies', 'manage');
-
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -947,5 +912,4 @@ const PoliciesPage: React.FC = () => {
     </Box>
   );
 };
-
 export default PoliciesPage;

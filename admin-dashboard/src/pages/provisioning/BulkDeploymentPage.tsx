@@ -5,13 +5,12 @@ import {
   CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
+  
+  
+  
+  
+  
+  
   Chip,
   IconButton,
   Dialog,
@@ -23,7 +22,6 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Tooltip,
   Menu,
   MenuItem as MenuItemComponent,
   Alert,
@@ -34,32 +32,27 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  
+  
   CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
   PlayArrow as StartIcon,
   Stop as StopIcon,
-  Refresh as RefreshIcon,
   Visibility as ViewIcon,
   MoreVert as MoreVertIcon,
-  ExpandMore as ExpandMoreIcon,
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Schedule as PendingIcon,
-  Devices as DevicesIcon,
-  Apps as AppsIcon,
-  Download as DownloadIcon,
-  InstallDesktop as InstallIcon,
+  
+  
+  
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { provisioningService } from '../../services/api';
-
 interface DeploymentSession {
   id: string;
   profileId: string;
@@ -75,7 +68,6 @@ interface DeploymentSession {
   createdAt: string;
   progress?: DeploymentProgress[];
 }
-
 interface DeploymentProgress {
   deviceId: string;
   status: 'PENDING' | 'DOWNLOADING' | 'INSTALLING' | 'COMPLETED' | 'FAILED';
@@ -85,7 +77,6 @@ interface DeploymentProgress {
   startedAt?: string;
   completedAt?: string;
 }
-
 interface DeploymentFormData {
   profileId: string;
   name: string;
@@ -98,7 +89,6 @@ interface DeploymentFormData {
     skipValidation?: boolean;
   };
 }
-
 const APPLICATIONS = [
   'com.microsoft.office.outlook',
   'com.microsoft.office.word',
@@ -111,7 +101,6 @@ const APPLICATIONS = [
   'com.whatsapp',
   'com.facebook.katana'
 ];
-
 export const BulkDeploymentPage: React.FC = () => {
   const [deployments, setDeployments] = useState<DeploymentSession[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -138,13 +127,11 @@ export const BulkDeploymentPage: React.FC = () => {
       skipValidation: false
     }
   });
-
   useEffect(() => {
     fetchDeployments();
     fetchProfiles();
     fetchDevices();
   }, []);
-
   const fetchDeployments = async () => {
     try {
       setLoading(true);
@@ -175,7 +162,6 @@ export const BulkDeploymentPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   const fetchProfiles = async () => {
     try {
       const data = await provisioningService.getProfiles();
@@ -184,7 +170,6 @@ export const BulkDeploymentPage: React.FC = () => {
       console.error('Error fetching profiles:', err);
     }
   };
-
   const fetchDevices = async () => {
     try {
       const devicesData = await provisioningService.getDevices();
@@ -193,7 +178,6 @@ export const BulkDeploymentPage: React.FC = () => {
       console.error('Error fetching devices:', err);
     }
   };
-
   const handleCreateDeployment = () => {
     setSelectedDeployment(null);
     setFormData({
@@ -210,18 +194,15 @@ export const BulkDeploymentPage: React.FC = () => {
     });
     setDialogOpen(true);
   };
-
   const handleViewDeployment = (deployment: DeploymentSession) => {
     setSelectedDeployment(deployment);
     setProgressDialogOpen(true);
     fetchDeploymentProgress(deployment.id);
   };
-
   const handleDeleteDeployment = async (deployment: DeploymentSession) => {
     if (!window.confirm(`Are you sure you want to delete "${deployment.name}"?`)) {
       return;
     }
-
     try {
       await provisioningService.cancelDeployment(deployment.id);
       await fetchDeployments();
@@ -231,7 +212,6 @@ export const BulkDeploymentPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to delete deployment');
     }
   };
-
   const handleStartDeployment = async (deployment: DeploymentSession) => {
     try {
       await provisioningService.bulkDeployApplications(deployment.profileId, {
@@ -250,7 +230,6 @@ export const BulkDeploymentPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to start deployment');
     }
   };
-
   const handleSaveDeployment = async () => {
     try {
       await provisioningService.bulkDeployApplications(formData.profileId, {
@@ -266,7 +245,6 @@ export const BulkDeploymentPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to create deployment');
     }
   };
-
   const fetchDeploymentProgress = async (deploymentId: string) => {
     try {
       const progress = await provisioningService.getDeploymentProgress(deploymentId);
@@ -275,17 +253,14 @@ export const BulkDeploymentPage: React.FC = () => {
       console.error('Error fetching deployment progress:', err);
     }
   };
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, deployment: DeploymentSession) => {
     setAnchorEl(event.currentTarget);
     setMenuDeployment(deployment);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setMenuDeployment(null);
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -300,7 +275,6 @@ export const BulkDeploymentPage: React.FC = () => {
         return 'default';
     }
   };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -315,16 +289,13 @@ export const BulkDeploymentPage: React.FC = () => {
         return <PendingIcon />;
     }
   };
-
   const getProgressPercentage = (deployment: DeploymentSession) => {
     if (deployment.totalDevices === 0) return 0;
     return Math.round((deployment.completedDevices / deployment.totalDevices) * 100);
   };
-
   if (loading) {
     return <LoadingSpinner message="Loading bulk deployments..." />;
   }
-
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Paper,
@@ -10,7 +10,6 @@ import {
   DialogActions,
   TextField,
   Grid,
-  Chip,
   Table,
   TableBody,
   TableCell,
@@ -29,7 +28,6 @@ import {
   IconButton,
   Tooltip,
   Stack,
-  Divider
 } from '@mui/material';
 import {
   SwapHoriz as TransferIcon,
@@ -46,7 +44,6 @@ import { apiService } from '../../services/api';
 import PageHeader from '../../components/common/PageHeader';
 import StatusChip from '../../components/common/StatusChip';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-
 interface DeviceTransfer {
   id: string;
   deviceId: string;
@@ -71,14 +68,12 @@ interface DeviceTransfer {
     manufacturer?: string;
   };
 }
-
 interface Department {
   id: string;
   name: string;
   code?: string;
   location?: string;
 }
-
 const DeviceTransferPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -88,7 +83,6 @@ const DeviceTransferPage: React.FC = () => {
   const [selectedTransfer, setSelectedTransfer] = useState<DeviceTransfer | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
   const queryClient = useQueryClient();
 
   // Form state for new transfer
@@ -111,7 +105,7 @@ const DeviceTransferPage: React.FC = () => {
         ...(statusFilter && { status: statusFilter })
       }
     }).then(res => res.data),
-    placeholderData: (previousData) => previousData
+    placeholderData: (previousData: unknown) => previousData
   });
 
   // Fetch departments
@@ -156,7 +150,6 @@ const DeviceTransferPage: React.FC = () => {
       setError(error.response?.data?.error || 'Failed to process approval');
     }
   });
-
   const resetTransferForm = () => {
     setTransferForm({
       deviceId: '',
@@ -168,13 +161,11 @@ const DeviceTransferPage: React.FC = () => {
     });
     setSelectedDevice(null);
   };
-
   const handleRequestTransfer = () => {
     if (!selectedDevice) {
       setError('Please select a device');
       return;
     }
-
     const transferData = {
       deviceId: selectedDevice.deviceId,
       fromUserId: selectedDevice.assignedUserId,
@@ -189,20 +180,16 @@ const DeviceTransferPage: React.FC = () => {
       transferReason: transferForm.transferReason,
       transferNotes: transferForm.transferNotes
     };
-
     requestTransferMutation.mutate(transferData);
   };
-
   const handleApproval = (approved: boolean, notes?: string) => {
     if (!selectedTransfer) return;
-    
     approveTransferMutation.mutate({
       transferId: selectedTransfer.id,
       approved,
-      notes
+      ...(notes !== undefined ? { notes } : {}),
     });
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'PENDING': return 'warning';
@@ -214,9 +201,7 @@ const DeviceTransferPage: React.FC = () => {
       default: return 'default';
     }
   };
-
   if (isLoading) return <LoadingSpinner message="Loading device transfers..." />;
-
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader
@@ -427,7 +412,10 @@ const DeviceTransferPage: React.FC = () => {
                 onChange={(_, newValue) => setSelectedDevice(newValue)}
                 renderInput={(params) => (
                   <TextField
-                    {...params}
+                    // MUI types these params with explicitly-optional properties, which
+                    // exactOptionalPropertyTypes refuses to spread onto TextField. The
+                    // values themselves come straight from Autocomplete.
+                    {...(params as React.ComponentProps<typeof TextField>)}
                     label="Select Device"
                     required
                     fullWidth
@@ -585,5 +573,4 @@ const DeviceTransferPage: React.FC = () => {
     </Box>
   );
 };
-
 export default DeviceTransferPage;

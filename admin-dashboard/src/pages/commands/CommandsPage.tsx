@@ -149,10 +149,10 @@ const CommandsPage: React.FC = () => {
         deviceIds: [command.deviceId],
         parameters: command.parameters,
         status: command.status as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED',
-        executedAt: command.executedAt,
-        completedAt: command.completedAt,
-        result: command.result,
-        error: command.error,
+        ...(command.executedAt !== undefined ? { executedAt: command.executedAt } : {}),
+        ...(command.completedAt !== undefined ? { completedAt: command.completedAt } : {}),
+        ...(command.result !== undefined ? { result: command.result } : {}),
+        ...(command.error !== undefined ? { error: command.error } : {}),
         createdBy: 'Admin', // Would need to be populated from API
         createdAt: command.createdAt
       }));

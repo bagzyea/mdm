@@ -4,14 +4,12 @@ import {
   Typography,
   Button,
   Card,
-  CardContent,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   IconButton,
   Dialog,
@@ -39,7 +37,6 @@ import {
 } from '@mui/icons-material';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
-
 interface User {
   id: string;
   username: string;
@@ -51,7 +48,6 @@ interface User {
   createdAt: string;
   lastLogin?: string;
 }
-
 interface CreateUserData {
   username: string;
   email: string;
@@ -60,7 +56,6 @@ interface CreateUserData {
   lastName: string;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
-
 const UsersPage: React.FC = () => {
   const { user: currentUser } = useAuthContext();
   const [users, setUsers] = useState<User[]>([]);
@@ -77,12 +72,10 @@ const UsersPage: React.FC = () => {
     lastName: '',
     role: 'VIEWER',
   });
-
   const fetchUsers = async () => {
     try {
       setLoading(true);
       console.log('🔄 Fetching users...');
-      
       const usersData = await apiService.getUsers({ limit: 100 });
       console.log('👥 Users fetched:', { 
         count: usersData.data?.length || 0, 
@@ -100,9 +93,8 @@ const UsersPage: React.FC = () => {
         role: user.role as 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER',
         isActive: user.isActive,
         createdAt: user.createdAt,
-        lastLogin: user.lastLogin
+        ...(user.lastLogin !== undefined ? { lastLogin: user.lastLogin } : {}),
       }));
-      
       setUsers(mappedUsers);
       setError(null);
       console.log('✅ Users loaded successfully:', mappedUsers.length);
@@ -113,11 +105,9 @@ const UsersPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchUsers();
   }, []);
-
   const handleCreateUser = async () => {
     try {
       console.log('🔄 Creating user:', formData.username);
@@ -131,10 +121,8 @@ const UsersPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to create user');
     }
   };
-
   const handleUpdateUser = async () => {
     if (!editingUser) return;
-
     try {
       const updateData = {
         email: formData.email,
@@ -142,7 +130,6 @@ const UsersPage: React.FC = () => {
         lastName: formData.lastName,
         role: formData.role,
       };
-      
       await apiService.put(`/auth/users/${editingUser.id}`, updateData);
       await fetchUsers();
       handleCloseDialog();
@@ -151,7 +138,6 @@ const UsersPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to update user');
     }
   };
-
   const handleToggleActive = async (userId: string, isActive: boolean) => {
     try {
       await apiService.put(`/auth/users/${userId}/status`, { isActive: !isActive });
@@ -161,10 +147,8 @@ const UsersPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to update user status');
     }
   };
-
   const handleDeleteUser = async (userId: string) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
-
     try {
       await apiService.delete(`/auth/users/${userId}`);
       await fetchUsers();
@@ -173,7 +157,6 @@ const UsersPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to delete user');
     }
   };
-
   const handleOpenDialog = (user?: User) => {
     if (user) {
       setEditingUser(user);
@@ -198,13 +181,11 @@ const UsersPage: React.FC = () => {
     }
     setOpenDialog(true);
   };
-
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingUser(null);
     setShowPassword(false);
   };
-
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'SUPER_ADMIN':
@@ -219,9 +200,7 @@ const UsersPage: React.FC = () => {
         return 'default';
     }
   };
-
   const canManageUsers = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
-
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -463,5 +442,4 @@ const UsersPage: React.FC = () => {
     </Box>
   );
 };
-
 export default UsersPage;

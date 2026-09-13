@@ -5,59 +5,52 @@ import {
   CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
+  
+  
+  
+  
+  
+  
   Chip,
   IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
-  Tooltip,
+  
+  
+  
+  
+  
   Menu,
   MenuItem as MenuItemComponent,
   Alert,
-  LinearProgress,
   Grid,
   Divider,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  CircularProgress
+  
+  
+  
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   Visibility as ViewIcon,
   MoreVert as MoreVertIcon,
-  ExpandMore as ExpandMoreIcon,
-  CheckCircle as SuccessIcon,
-  Error as ErrorIcon,
+  
+  
   Warning as WarningIcon,
-  Schedule as PendingIcon,
-  Devices as DevicesIcon,
-  Memory as MemoryIcon,
-  Storage as StorageIcon,
-  NetworkCheck as NetworkIcon,
-  Battery90 as BatteryIcon
+  
+  
+  
+  
+  
 } from '@mui/icons-material';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { provisioningService } from '../../services/api';
-
 interface DeviceModelInfo {
   id: string;
   deviceId: string;
@@ -72,7 +65,6 @@ interface DeviceModelInfo {
   lastDetected?: string;
   createdAt: string;
 }
-
 interface DeviceSpecifications {
   screenResolution?: string;
   screenSize?: string;
@@ -84,7 +76,6 @@ interface DeviceSpecifications {
   networkCapabilities?: string[];
   sensors?: string[];
 }
-
 interface ModelDetectionResult {
   deviceId: string;
   detectedModel: string;
@@ -93,7 +84,6 @@ interface ModelDetectionResult {
   recommendations: string[];
   compatibleProfiles: string[];
 }
-
 export const DeviceModelRecognitionPage: React.FC = () => {
   const [devices, setDevices] = useState<DeviceModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,11 +94,9 @@ export const DeviceModelRecognitionPage: React.FC = () => {
   const [detecting, setDetecting] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [menuDevice, setMenuDevice] = useState<DeviceModelInfo | null>(null);
-
   useEffect(() => {
     fetchDevices();
   }, []);
-
   const fetchDevices = async () => {
     try {
       setLoading(true);
@@ -136,7 +124,6 @@ export const DeviceModelRecognitionPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   const handleDetectModel = async (device: DeviceModelInfo) => {
     try {
       setDetecting(true);
@@ -153,12 +140,10 @@ export const DeviceModelRecognitionPage: React.FC = () => {
       setDetecting(false);
     }
   };
-
   const handleBulkDetection = async () => {
     try {
       setDetecting(true);
       const devicesToDetect = devices.filter(device => !device.detectedModel);
-      
       for (const device of devicesToDetect) {
         try {
           await provisioningService.detectDeviceModel(device.deviceId);
@@ -168,7 +153,6 @@ export const DeviceModelRecognitionPage: React.FC = () => {
           console.error(`Error detecting model for device ${device.deviceId}:`, err);
         }
       }
-      
       await fetchDevices();
       setError(null);
     } catch (err: any) {
@@ -178,17 +162,14 @@ export const DeviceModelRecognitionPage: React.FC = () => {
       setDetecting(false);
     }
   };
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, device: DeviceModelInfo) => {
     setAnchorEl(event.currentTarget);
     setMenuDevice(device);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setMenuDevice(null);
   };
-
   const getCompatibilityColor = (status?: string) => {
     switch (status) {
       case 'COMPATIBLE':
@@ -201,18 +182,15 @@ export const DeviceModelRecognitionPage: React.FC = () => {
         return 'default';
     }
   };
-
   const getConfidenceColor = (confidence?: number) => {
     if (!confidence) return 'default';
     if (confidence >= 80) return 'success';
     if (confidence >= 60) return 'warning';
     return 'error';
   };
-
   if (loading) {
     return <LoadingSpinner message="Loading devices..." />;
   }
-
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

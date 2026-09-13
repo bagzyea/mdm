@@ -117,7 +117,7 @@ class ProvisioningService {
     });
 
     // Start session
-    await this.startSession(session.id, { options });
+    await this.startSession(session.id, options ? { options } : {});
 
     return session;
   }

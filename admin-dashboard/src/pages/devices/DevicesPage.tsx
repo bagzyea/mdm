@@ -57,7 +57,6 @@ import {
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService, provisioningService } from '../../services/api';
 import { ProvisioningProfile } from '../../types';
-
 interface Device {
   id: string;
   deviceId: string;
@@ -76,13 +75,11 @@ interface Device {
   complianceStatus: 'COMPLIANT' | 'NON_COMPLIANT' | 'UNKNOWN';
   assignedPolicies: string[];
 }
-
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
 }
-
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
   return (
@@ -91,7 +88,6 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
-
 const DevicesPage: React.FC = () => {
   const { hasPermission } = useAuthContext();
   const navigate = useNavigate();
@@ -118,13 +114,11 @@ const DevicesPage: React.FC = () => {
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
   const [apkUrl, setApkUrl] = useState(window.location.origin + '/api/v1/mdm-agent.apk');
-
   const fetchDevices = async (pageNum?: number, limit?: number) => {
     try {
       setLoading(true);
       const currentPage = pageNum ?? page;
       const currentLimit = limit ?? rowsPerPage;
-
       const devicesData = await apiService.getDevices({ page: currentPage + 1, limit: currentLimit });
       // Check if we have valid response structure
       if (!devicesData || typeof devicesData !== 'object') {
@@ -166,7 +160,6 @@ const DevicesPage: React.FC = () => {
         complianceStatus: 'COMPLIANT' as const,
         assignedPolicies: device.policies?.map((p: any) => p.id) || []
       }));
-      
       setDevices(mappedDevices);
       setTotalCount(devicesData?.pagination?.total ?? mappedDevices.length);
       setError(null);
@@ -177,7 +170,6 @@ const DevicesPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchDevices(page, rowsPerPage);
   }, [page, rowsPerPage]);
@@ -211,7 +203,6 @@ const DevicesPage: React.FC = () => {
     import('../../services/websocket').then(({ websocketService }) => {
       websocketService.subscribeToHeartbeatUpdates(handleDeviceUpdate);
       websocketService.subscribeToDeviceUpdates(handleDeviceUpdate);
-      
       return () => {
         websocketService.off('deviceHeartbeat', handleDeviceUpdate);
         websocketService.off('deviceStatusChanged', handleDeviceUpdate);
@@ -219,21 +210,17 @@ const DevicesPage: React.FC = () => {
       };
     });
   }, []);
-
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, device: Device) => {
     setAnchorEl(event.currentTarget);
     setSelectedDevice(device);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setSelectedDevice(null);
   };
-
   const handleDeviceAction = async (action: string, device: Device) => {
     try {
       console.log(`🔄 Executing ${action} command for device:`, device.deviceId);
-      
       switch (action) {
         case 'lock':
           await apiService.sendCommand(device.id, 'LOCK_DEVICE', { 
@@ -273,7 +260,6 @@ const DevicesPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || `Failed to ${action} device`);
     }
   };
-
   const generateEnrollmentCode = async () => {
     try {
       const response = await apiService.post('/devices/enrollment-code');
@@ -284,12 +270,10 @@ const DevicesPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to generate enrollment code');
     }
   };
-
   const handleOpenDialog = async (type: 'enroll' | 'details' | 'assign' | 'sendCommand', device?: Device) => {
     setDialogType(type);
     setSelectedDevice(device || null);
     setOpenDialog(true);
-
     if (type === 'enroll') {
       try {
         const response = await provisioningService.getProfiles();
@@ -309,14 +293,12 @@ const DevicesPage: React.FC = () => {
       }
     }
   };
-
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setDialogType(null);
     setSelectedDevice(null);
     setEnrollmentCode('');
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ACTIVE':
@@ -331,20 +313,6 @@ const DevicesPage: React.FC = () => {
         return 'default';
     }
   };
-
-  const getComplianceColor = (compliance: string) => {
-    switch (compliance) {
-      case 'COMPLIANT':
-        return 'success';
-      case 'NON_COMPLIANT':
-        return 'error';
-      case 'UNKNOWN':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
   const formatLastSeen = (lastSeen: string) => {
     const now = new Date();
     const lastSeenDate = new Date(lastSeen);
@@ -352,16 +320,13 @@ const DevicesPage: React.FC = () => {
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 5) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${diffDays}d ago`;
   };
-
   const generateProvisioningJson = () => {
     if (!enrollmentProfileId) return '';
-
     const payload = {
       "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.mdm.app/com.mdm.app.admin.MDMDeviceAdminReceiver",
       "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "",
@@ -371,14 +336,15 @@ const DevicesPage: React.FC = () => {
       "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
       "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true,
       "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
-        "provisioning_profile_id": enrollmentProfileId
+        "provisioning_profile_id": enrollmentProfileId,
+        // Enrollment now requires a single-use, expiring code (finding F-02). The agent
+        // reads it from this bundle and presents it to POST /api/devices/enroll.
+        "enrollment_code": enrollmentCode
       }
     };
     return JSON.stringify(payload);
   };
-
   const canManageDevices = hasPermission('devices', 'create') || hasPermission('devices', 'update');
-
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ mb: 5, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 3 }}>
@@ -783,11 +749,44 @@ const DevicesPage: React.FC = () => {
                   sx={{ mb: 2 }}
                   helperText="The public URL where the Android MDM Agent APK is hosted"
                 />
+
+                {/*
+                  Enrollment codes are mandatory since finding F-02: the endpoint no
+                  longer accepts an invented deviceId. This control was written but never
+                  rendered, so there was no way for an administrator to obtain one.
+                */}
+                <Box sx={{ mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={generateEnrollmentCode}
+                    disabled={!canManageDevices}
+                  >
+                    {enrollmentCode ? 'Generate a new enrollment code' : 'Generate enrollment code'}
+                  </Button>
+
+                  {enrollmentCode && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        Enrollment code
+                      </Typography>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontFamily: 'monospace', letterSpacing: 1 }}
+                      >
+                        {enrollmentCode}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Single use, and shown only once. It is embedded in the QR payload.
+                      </Typography>
+                    </Alert>
+                  )}
+                </Box>
               </Grid>
               
               <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <Paper elevation={3} sx={{ p: 4, display: 'inline-block', bgcolor: 'white', borderRadius: 4 }}>
-                  {enrollmentProfileId && wifiSsid && apkUrl ? (
+                  {enrollmentProfileId && wifiSsid && apkUrl && enrollmentCode ? (
                     <QRCodeSVG 
                       value={generateProvisioningJson()} 
                       size={240}
@@ -797,7 +796,8 @@ const DevicesPage: React.FC = () => {
                   ) : (
                     <Box sx={{ width: 240, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #cbd5e1', borderRadius: 2 }}>
                       <Typography color="text.secondary" align="center" variant="body2" sx={{ px: 2 }}>
-                        Select a profile and provide Wi-Fi credentials to generate the QR payload
+                        Generate an enrollment code, select a profile and provide Wi-Fi
+                        credentials to build the QR payload
                       </Typography>
                     </Box>
                   )}
@@ -1011,5 +1011,4 @@ const DevicesPage: React.FC = () => {
     </Box>
   );
 };
-
 export default DevicesPage;

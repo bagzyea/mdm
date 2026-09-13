@@ -59,21 +59,17 @@ describe('AuthContext', () => {
       email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
-      role: 'USER' as const,
+      role: 'VIEWER' as const,
       isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    const mockTokens = {
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-      expiresIn: 3600,
-    };
 
     vi.mocked(apiService.apiService.login).mockResolvedValue({
       user: mockUser,
-      tokens: mockTokens,
+      token: 'access-token',
+      expiresIn: '15m',
     });
 
     const { result } = renderHook(() => useAuth(), { wrapper: createWrapper });
@@ -125,7 +121,7 @@ describe('AuthContext', () => {
       email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
-      role: 'USER' as const,
+      role: 'VIEWER' as const,
       isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -133,11 +129,8 @@ describe('AuthContext', () => {
 
     vi.mocked(apiService.apiService.login).mockResolvedValue({
       user: mockUser,
-      tokens: {
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token',
-        expiresIn: 3600,
-      },
+      token: 'access-token',
+      expiresIn: '15m',
     });
 
     const { result } = renderHook(() => useAuth(), { wrapper: createWrapper });
@@ -173,7 +166,7 @@ describe('AuthContext', () => {
       email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
-      role: 'USER' as const,
+      role: 'VIEWER' as const,
       isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

@@ -61,7 +61,6 @@ import {
   CompatibleDevicesResponse
 } from '../../types';
 import { provisioningService } from '../../services/api';
-
 interface ProfileFormData {
   name: string;
   description: string;
@@ -73,13 +72,8 @@ interface ProfileFormData {
   filePackages: Omit<FilePackage, 'id' | 'profileId'>[];
   geographicRules?: GeographicRules;
 }
-
 const DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
 const FILE_TYPES = ['CONFIG', 'FORM', 'DATA', 'CERTIFICATE', 'DOCUMENTATION', 'MEDIA', 'OTHER'];
-const _APN_CARRIERS = ['MTN', 'AIRTEL', 'CUSTOM'];
-const _NETWORK_TYPES = ['3G', '4G', '5G', 'AUTO'];
-const _PROTOCOLS = ['IPV4', 'IPV6', 'IPV4V6'];
-
 export const ProvisioningProfilesPage: React.FC = () => {
   const [profiles, setProfiles] = useState<ProvisioningProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,11 +103,9 @@ export const ProvisioningProfilesPage: React.FC = () => {
     filePackages: []
   });
   const [useFlexibleAPKs, setUseFlexibleAPKs] = useState(false);
-
   useEffect(() => {
     fetchProfiles();
   }, []);
-
   const fetchProfiles = async () => {
     try {
       setLoading(true);
@@ -125,7 +117,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   const handleCreateProfile = () => {
     setDialogMode('create');
     setSelectedProfile(null);
@@ -140,7 +131,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
     setUseFlexibleAPKs(false);
     setDialogOpen(true);
   };
-
   const handleEditProfile = (profile: ProvisioningProfile) => {
     setDialogMode('edit');
     setSelectedProfile(profile);
@@ -158,8 +148,12 @@ export const ProvisioningProfilesPage: React.FC = () => {
         installOrder: app.installOrder,
         isRequired: app.isRequired
       })),
-      networkConfig: profile.networkConfig,
-      securityConfig: profile.securityConfig,
+      // Optional fields are omitted rather than set to undefined, which
+      // exactOptionalPropertyTypes treats as a different thing from absent.
+      ...(profile.networkConfig !== undefined ? { networkConfig: profile.networkConfig } : {}),
+      ...(profile.securityConfig !== undefined
+        ? { securityConfig: profile.securityConfig }
+        : {}),
       filePackages: profile.filePackages.map(pkg => ({
         name: pkg.name,
         description: pkg.description || '',
@@ -170,17 +164,17 @@ export const ProvisioningProfilesPage: React.FC = () => {
         isRequired: pkg.isRequired,
         fileSize: pkg.fileSize || 0
       })),
-      geographicRules: profile.geographicRules
+      ...(profile.geographicRules !== undefined
+        ? { geographicRules: profile.geographicRules }
+        : {}),
     });
     setDialogOpen(true);
   };
-
   const handleViewProfile = (profile: ProvisioningProfile) => {
     setDialogMode('view');
     setSelectedProfile(profile);
     setDialogOpen(true);
   };
-
   const handleDeleteProfile = async (profile: ProvisioningProfile) => {
     if (window.confirm(`Are you sure you want to delete profile "${profile.name}"?`)) {
       try {
@@ -191,7 +185,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       }
     }
   };
-
   const handleValidateProfile = async (profile: ProvisioningProfile) => {
     try {
       const result = await provisioningService.validateProfile(profile.id);
@@ -200,7 +193,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       setError('Failed to validate profile');
     }
   };
-
   const handleGetCompatibleDevices = async (profile: ProvisioningProfile) => {
     try {
       const result = await provisioningService.getCompatibleDevices(profile.id);
@@ -209,7 +201,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       setError('Failed to fetch compatible devices');
     }
   };
-
   const handleSaveProfile = async () => {
     try {
       const request: CreateProvisioningProfileRequest = { ...formData };
@@ -230,30 +221,25 @@ export const ProvisioningProfilesPage: React.FC = () => {
           isRequired: sel.isRequired
         }));
       }
-
       if (dialogMode === 'create') {
         await provisioningService.createProfile(request);
       } else if (dialogMode === 'edit' && selectedProfile) {
         await provisioningService.updateProfile(selectedProfile.id, request);
       }
-
       setDialogOpen(false);
       await fetchProfiles();
     } catch (err) {
       setError('Failed to save profile');
     }
   };
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, profile: ProvisioningProfile) => {
     setAnchorEl(event.currentTarget);
     setMenuProfile(profile);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setMenuProfile(null);
   };
-
   const addApplication = () => {
     setFormData(prev => ({
       ...prev,
@@ -272,7 +258,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       ]
     }));
   };
-
   const updateApplication = (index: number, field: keyof ProvisioningApp, value: any) => {
     setFormData(prev => ({
       ...prev,
@@ -281,14 +266,12 @@ export const ProvisioningProfilesPage: React.FC = () => {
       )
     }));
   };
-
   const removeApplication = (index: number) => {
     setFormData(prev => ({
       ...prev,
       applications: prev.applications.filter((_, i) => i !== index)
     }));
   };
-
   const addFilePackage = () => {
     setFormData(prev => ({
       ...prev,
@@ -306,7 +289,6 @@ export const ProvisioningProfilesPage: React.FC = () => {
       ]
     }));
   };
-
   const updateFilePackage = (index: number, field: keyof FilePackage, value: any) => {
     setFormData(prev => ({
       ...prev,
@@ -315,22 +297,18 @@ export const ProvisioningProfilesPage: React.FC = () => {
       )
     }));
   };
-
   const removeFilePackage = (index: number) => {
     setFormData(prev => ({
       ...prev,
       filePackages: prev.filePackages.filter((_, i) => i !== index)
     }));
   };
-
   const handleOpenQrEnrollment = (profile: ProvisioningProfile) => {
     setEnrollmentProfile(profile);
     setQrDialogOpen(true);
   };
-
   const generateProvisioningJson = () => {
     if (!enrollmentProfile) return '';
-
     const payload = {
       "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.mdm.app/com.mdm.app.admin.MDMDeviceAdminReceiver",
       "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "", // Add correct SHA-256 hash if enforcing security
@@ -345,9 +323,7 @@ export const ProvisioningProfilesPage: React.FC = () => {
     };
     return JSON.stringify(payload);
   };
-
   if (loading) return <LoadingSpinner />;
-
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -589,10 +565,15 @@ export const ProvisioningProfilesPage: React.FC = () => {
             /* New Flexible APK Selection */
             <APKSelectionBuilder
               deviceModels={formData.deviceModels}
-              deviceLocation={formData.geographicRules && (formData.geographicRules.districts || formData.geographicRules.regions) ? {
-                district: formData.geographicRules.districts?.[0] || '',
-                region: formData.geographicRules.regions?.[0] || ''
-              } : undefined}
+              {...(formData.geographicRules &&
+              (formData.geographicRules.districts || formData.geographicRules.regions)
+                ? {
+                    deviceLocation: {
+                      district: formData.geographicRules.districts?.[0] || '',
+                      region: formData.geographicRules.regions?.[0] || '',
+                    },
+                  }
+                : {})}
               onSelectionChange={(selectedAPKs) => {
                 setFormData(prev => ({ ...prev, selectedAPKs }));
               }}

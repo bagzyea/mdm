@@ -18,20 +18,17 @@ import {
 import {
   Visibility,
   VisibilityOff,
-  AdminPanelSettings,
   Security,
   Person,
   Lock,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginCredentials } from '../../types';
-
 interface FormErrors {
   username?: string;
   password?: string;
   general?: string;
 }
-
 const LoginPage: React.FC = () => {
   const location = useLocation();
   const [credentials, setCredentials] = useState<LoginCredentials>({
@@ -44,7 +41,6 @@ const LoginPage: React.FC = () => {
   const [showDefaultCreds, setShowDefaultCreds] = useState(true);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [sessionMessage, setSessionMessage] = useState<{message: string; type: 'info' | 'warning'} | null>(null);
-  
   const { login } = useAuth();
 
   // Check for session expiry message from navigation state
@@ -63,11 +59,13 @@ const LoginPage: React.FC = () => {
       const timer = setTimeout(() => {
         setSessionMessage(null);
       }, 8000);
-      
       return () => clearTimeout(timer);
     }
-  }, [location.state]);
 
+    // noImplicitReturns: the effect returns a cleanup on one path, so it must be
+    // explicit about returning nothing on the other.
+    return undefined;
+  }, [location.state]);
   const validateField = (field: keyof LoginCredentials, value: string): string | undefined => {
     switch (field) {
       case 'username':
@@ -81,7 +79,6 @@ const LoginPage: React.FC = () => {
     }
     return undefined;
   };
-
   const handleInputChange = (field: keyof LoginCredentials) => (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -109,7 +106,6 @@ const LoginPage: React.FC = () => {
       });
     }
   };
-
   const handleBlur = (field: keyof LoginCredentials) => {
     const value = credentials[field];
     const error = validateField(field, value);
@@ -117,27 +113,20 @@ const LoginPage: React.FC = () => {
       setErrors(prev => ({ ...prev, [field]: error }));
     }
   };
-
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
-    
     const usernameError = validateField('username', credentials.username);
     if (usernameError) newErrors.username = usernameError;
-    
     const passwordError = validateField('password', credentials.password);
     if (passwordError) newErrors.password = passwordError;
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    
     if (!validateForm()) {
       return;
     }
-
     try {
       setIsLoading(true);
       setErrors({});
@@ -145,9 +134,7 @@ const LoginPage: React.FC = () => {
       // Success - navigation will be handled by the auth context
     } catch (err: any) {
       setLoginAttempts(prev => prev + 1);
-      
       let errorMessage = 'Login failed. Please try again.';
-      
       if (err?.response?.data?.error) {
         errorMessage = err.response.data.error;
       } else if (err?.response?.status === 401) {
@@ -157,17 +144,14 @@ const LoginPage: React.FC = () => {
       } else if (err?.code === 'NETWORK_ERROR') {
         errorMessage = 'Network error. Please check your connection.';
       }
-      
       setErrors({ general: errorMessage });
     } finally {
       setIsLoading(false);
     }
   };
-
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
-
   const useDefaultCredentials = () => {
     setCredentials({
       username: 'admin',
@@ -181,10 +165,8 @@ const LoginPage: React.FC = () => {
     const timer = setTimeout(() => {
       setShowDefaultCreds(false);
     }, 15000);
-    
     return () => clearTimeout(timer);
   }, []);
-
   return (
     <Box
       sx={{
@@ -273,7 +255,7 @@ const LoginPage: React.FC = () => {
               <Alert 
                 severity={loginAttempts > 3 ? "warning" : "error"} 
                 sx={{ mb: 2 }}
-                onClose={() => setErrors(prev => ({ ...prev, general: undefined }))}
+                onClose={() => setErrors(({ general: _drop, ...rest }) => rest)}
               >
                 {errors.general}
                 {loginAttempts > 3 && (
@@ -415,5 +397,4 @@ const LoginPage: React.FC = () => {
     </Box>
   );
 };
-
 export default LoginPage;

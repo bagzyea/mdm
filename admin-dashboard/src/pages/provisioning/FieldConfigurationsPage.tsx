@@ -5,13 +5,12 @@ import {
   CardContent,
   Typography,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
+  
+  
+  
+  
+  
+  
   Chip,
   IconButton,
   Dialog,
@@ -23,17 +22,14 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Tooltip,
   Menu,
   MenuItem as MenuItemComponent,
   Alert,
-  LinearProgress,
   Grid,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon
+  
+  
+  
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -42,15 +38,13 @@ import {
   Visibility as ViewIcon,
   MoreVert as MoreVertIcon,
   PlayArrow as ApplyIcon,
-  Check as ValidateIcon,
-  Devices as DevicesIcon,
-  Apps as AppsIcon,
-  Folder as FilesIcon,
-  LocationOn as LocationIcon
+  
+  
+  
+  
 } from '@mui/icons-material';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { provisioningService } from '../../services/api';
-
 interface FieldConfiguration {
   id: string;
   name: string;
@@ -66,7 +60,6 @@ interface FieldConfiguration {
   updatedAt: string;
   createdBy?: string;
 }
-
 interface FieldConfigurationFormData {
   name: string;
   description: string;
@@ -77,10 +70,8 @@ interface FieldConfigurationFormData {
   filePackages: any[];
   geographicRules?: any;
 }
-
 const DEVICE_MODELS = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
 const FILE_TYPES = ['CONFIG', 'FORM', 'DATA', 'CERTIFICATE', 'DOCUMENTATION', 'MEDIA', 'OTHER'];
-
 export const FieldConfigurationsPage: React.FC = () => {
   const [configurations, setConfigurations] = useState<FieldConfiguration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,12 +93,10 @@ export const FieldConfigurationsPage: React.FC = () => {
     applications: [],
     filePackages: []
   });
-
   useEffect(() => {
     fetchConfigurations();
     fetchDevices();
   }, []);
-
   const fetchConfigurations = async () => {
     try {
       setLoading(true);
@@ -121,7 +110,6 @@ export const FieldConfigurationsPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   const fetchDevices = async () => {
     try {
       const devicesData = await provisioningService.getDevices();
@@ -130,7 +118,6 @@ export const FieldConfigurationsPage: React.FC = () => {
       console.error('Error fetching devices:', err);
     }
   };
-
   const handleCreateConfiguration = () => {
     setDialogMode('create');
     setSelectedConfiguration(null);
@@ -143,7 +130,6 @@ export const FieldConfigurationsPage: React.FC = () => {
     });
     setDialogOpen(true);
   };
-
   const handleEditConfiguration = (configuration: FieldConfiguration) => {
     setDialogMode('edit');
     setSelectedConfiguration(configuration);
@@ -159,7 +145,6 @@ export const FieldConfigurationsPage: React.FC = () => {
     });
     setDialogOpen(true);
   };
-
   const handleViewConfiguration = (configuration: FieldConfiguration) => {
     setDialogMode('view');
     setSelectedConfiguration(configuration);
@@ -175,12 +160,10 @@ export const FieldConfigurationsPage: React.FC = () => {
     });
     setDialogOpen(true);
   };
-
   const handleDeleteConfiguration = async (configuration: FieldConfiguration) => {
     if (!window.confirm(`Are you sure you want to delete "${configuration.name}"?`)) {
       return;
     }
-
     try {
       await provisioningService.deleteFieldConfiguration(configuration.id);
       await fetchConfigurations();
@@ -190,13 +173,11 @@ export const FieldConfigurationsPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to delete field configuration');
     }
   };
-
   const handleApplyConfiguration = (configuration: FieldConfiguration) => {
     setSelectedConfiguration(configuration);
     setSelectedDevices([]);
     setApplyDialogOpen(true);
   };
-
   const handleSaveConfiguration = async () => {
     try {
       if (dialogMode === 'create') {
@@ -212,10 +193,8 @@ export const FieldConfigurationsPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to save field configuration');
     }
   };
-
   const handleApplyToDevices = async () => {
     if (!selectedConfiguration || selectedDevices.length === 0) return;
-
     try {
       await provisioningService.applyFieldConfiguration(selectedConfiguration.id, selectedDevices);
       setApplyDialogOpen(false);
@@ -225,17 +204,14 @@ export const FieldConfigurationsPage: React.FC = () => {
       setError(err.response?.data?.message || err.message || 'Failed to apply field configuration');
     }
   };
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, configuration: FieldConfiguration) => {
     setAnchorEl(event.currentTarget);
     setMenuConfiguration(configuration);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setMenuConfiguration(null);
   };
-
   const addFilePackage = () => {
     setFormData({
       ...formData,
@@ -252,22 +228,18 @@ export const FieldConfigurationsPage: React.FC = () => {
       ]
     });
   };
-
   const updateFilePackage = (index: number, field: string, value: any) => {
     const updatedPackages = [...formData.filePackages];
     updatedPackages[index] = { ...updatedPackages[index], [field]: value };
     setFormData({ ...formData, filePackages: updatedPackages });
   };
-
   const removeFilePackage = (index: number) => {
     const updatedPackages = formData.filePackages.filter((_, i) => i !== index);
     setFormData({ ...formData, filePackages: updatedPackages });
   };
-
   if (loading) {
     return <LoadingSpinner message="Loading field configurations..." />;
   }
-
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

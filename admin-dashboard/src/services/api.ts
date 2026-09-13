@@ -124,6 +124,19 @@ class ApiService {
     }
   }
 
+  /**
+   * Validate the current access token against the server.
+   *
+   * The backend has exposed POST /api/auth/validate all along, but the client never
+   * called it — AuthContext's own tests referenced this method, which did not exist.
+   */
+  async validateToken(): Promise<{ valid: boolean; user: User }> {
+    const response = await this.axiosInstance.post<{ valid: boolean; user: User }>(
+      '/auth/validate'
+    );
+    return response.data;
+  }
+
   async getCurrentUser(): Promise<User> {
     const response = await this.axiosInstance.get<{ user: User }>('/auth/profile');
     return response.data.user;

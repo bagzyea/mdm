@@ -62,13 +62,11 @@ import {
 } from '../../types';
 import { provisioningService } from '../../services/api';
 import websocketService from '../../services/websocket';
-
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
 }
-
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
   return (
@@ -83,7 +81,6 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
-
 export const ProvisioningSessionsPage: React.FC = () => {
   const [sessions, setSessions] = useState<ProvisioningSession[]>([]);
   const [profiles, setProfiles] = useState<ProvisioningProfile[]>([]);
@@ -103,7 +100,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
     description: '',
     deviceIds: []
   });
-
   useEffect(() => {
     fetchSessions();
     fetchProfiles();
@@ -135,14 +131,12 @@ export const ProvisioningSessionsPage: React.FC = () => {
         )
       );
     };
-
     websocketService.on('provisioningProgressUpdate', handleProvisioningProgress);
 
     // Set up polling as fallback (every 30 seconds instead of 5 to reduce server load now that we have socket updates)
     const interval = setInterval(() => {
       fetchSessions();
     }, 30000); // Refresh every 30 seconds
-
     return () => {
       if (interval) {
         clearInterval(interval);
@@ -150,7 +144,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       websocketService.off('provisioningProgressUpdate', handleProvisioningProgress);
     };
   }, []);
-
   const fetchSessions = async () => {
     try {
       const response = await provisioningService.getSessions();
@@ -163,7 +156,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       setLoading(false);
     }
   };
-
   const fetchProfiles = async () => {
     try {
       const response = await provisioningService.getProfiles();
@@ -172,7 +164,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       console.error('Error fetching profiles:', err);
     }
   };
-
   const fetchDevices = async () => {
     try {
       const response = await provisioningService.getDevices();
@@ -181,7 +172,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       console.error('Error fetching devices:', err);
     }
   };
-
   const handleCreateSession = () => {
     setFormData({
       profileId: '',
@@ -191,17 +181,10 @@ export const ProvisioningSessionsPage: React.FC = () => {
     });
     setDialogOpen(true);
   };
-
-  const _handleEditSession = (session: ProvisioningSession) => {
-    setSelectedSession(session);
-    setDialogOpen(true);
-  };
-
   const handleViewSession = (session: ProvisioningSession) => {
     setSelectedSession(session);
     setTabValue(0);
   };
-
   const handleDeleteSession = async (session: ProvisioningSession) => {
     if (window.confirm(`Are you sure you want to delete session "${session.name}"?`)) {
       try {
@@ -212,7 +195,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       }
     }
   };
-
   const handleStartSession = async (session: ProvisioningSession) => {
     try {
       await provisioningService.startSession(session.id);
@@ -221,7 +203,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       setError(err.message || 'Failed to start session');
     }
   };
-
   const handlePauseSession = async (session: ProvisioningSession) => {
     try {
       await provisioningService.pauseSession(session.id);
@@ -230,7 +211,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       setError(err.message || 'Failed to pause session');
     }
   };
-
   const handleCancelSession = async (session: ProvisioningSession) => {
     if (window.confirm(`Are you sure you want to cancel session "${session.name}"?`)) {
       try {
@@ -241,7 +221,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
       }
     }
   };
-
   const handleSaveSession = async () => {
     try {
       if (selectedSession) {
@@ -255,17 +234,14 @@ export const ProvisioningSessionsPage: React.FC = () => {
       setError(err.message || 'Failed to save session');
     }
   };
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, session: ProvisioningSession) => {
     setAnchorEl(event.currentTarget);
     setMenuSession(session);
   };
-
   const handleMenuClose = () => {
     setAnchorEl(null);
     setMenuSession(null);
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -282,36 +258,28 @@ export const ProvisioningSessionsPage: React.FC = () => {
         return 'default';
     }
   };
-
   const getProgressPercentage = (session: ProvisioningSession) => {
     if (session.totalDevices === 0) return 0;
     return Math.round((session.completedDevices / session.totalDevices) * 100);
   };
-
   const getDeviceStatusCount = (session: ProvisioningSession, status: ProvisioningDeviceStatus) => {
     return session.progress?.filter(p => p.status === status).length || 0;
   };
-
   const formatDuration = (startTime?: string, endTime?: string) => {
     if (!startTime) return 'Not started';
-    
     const start = new Date(startTime);
     const end = endTime ? new Date(endTime) : new Date();
     const diff = end.getTime() - start.getTime();
-    
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
   };
-
   if (loading) {
     return <LoadingSpinner message="Loading provisioning sessions..." />;
   }
-
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

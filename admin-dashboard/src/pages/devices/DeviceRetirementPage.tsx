@@ -30,17 +30,14 @@ import {
   Stack,
   FormControlLabel,
   Checkbox,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
+  
+  
   Chip
 } from '@mui/material';
 import {
   Delete as RetireIcon,
   Security as DataWipeIcon,
   Assignment as DocumentIcon,
-  CheckCircle as CompleteIcon,
   Warning as WarningIcon,
   Add as AddIcon,
   Edit as EditIcon,
@@ -51,7 +48,6 @@ import { apiService } from '../../services/api';
 import PageHeader from '../../components/common/PageHeader';
 import StatusChip from '../../components/common/StatusChip';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-
 interface DeviceRetirement {
   id: string;
   deviceId: string;
@@ -79,7 +75,6 @@ interface DeviceRetirement {
     assignedUserEmail?: string;
   };
 }
-
 const DeviceRetirementPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -89,7 +84,6 @@ const DeviceRetirementPage: React.FC = () => {
   const [selectedRetirement, setSelectedRetirement] = useState<DeviceRetirement | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
   const queryClient = useQueryClient();
 
   // Form state for new retirement
@@ -120,7 +114,7 @@ const DeviceRetirementPage: React.FC = () => {
         ...(statusFilter && { status: statusFilter })
       }
     }).then(res => res.data),
-    placeholderData: (previousData) => previousData
+    placeholderData: (previousData: unknown) => previousData
   });
 
   // Fetch devices for retirement selection
@@ -160,7 +154,6 @@ const DeviceRetirementPage: React.FC = () => {
       setError(error.response?.data?.error || 'Failed to update status');
     }
   });
-
   const resetRetirementForm = () => {
     setRetirementForm({
       deviceId: '',
@@ -172,13 +165,11 @@ const DeviceRetirementPage: React.FC = () => {
     });
     setSelectedDevice(null);
   };
-
   const handleInitiateRetirement = () => {
     if (!selectedDevice) {
       setError('Please select a device');
       return;
     }
-
     const retirementData = {
       deviceId: selectedDevice.deviceId,
       retirementReason: retirementForm.retirementReason,
@@ -187,19 +178,15 @@ const DeviceRetirementPage: React.FC = () => {
       physicalReturn: retirementForm.physicalReturn,
       notes: retirementForm.notes
     };
-
     initiateRetirementMutation.mutate(retirementData);
   };
-
   const handleStatusUpdate = () => {
     if (!selectedRetirement) return;
-    
     updateStatusMutation.mutate({
       retirementId: selectedRetirement.id,
       updateData: statusUpdateForm
     });
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'INITIATED': return 'info';
@@ -214,25 +201,7 @@ const DeviceRetirementPage: React.FC = () => {
       default: return 'default';
     }
   };
-
-  const getRetirementSteps = (retirement: DeviceRetirement) => {
-    const steps = [
-      { label: 'Initiated', completed: true },
-      { label: 'Approved', completed: retirement.status !== 'INITIATED' },
-      { label: 'Data Wipe', completed: retirement.dataWipeCompleted },
-      { label: 'Physical Return', completed: retirement.physicalReturnCompleted },
-      { label: 'Completed', completed: retirement.status === 'COMPLETED' }
-    ];
-
-    if (!retirement.physicalReturn) {
-      return steps.filter(step => step.label !== 'Physical Return');
-    }
-
-    return steps;
-  };
-
   if (isLoading) return <LoadingSpinner message="Loading device retirements..." />;
-
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader
@@ -444,7 +413,10 @@ const DeviceRetirementPage: React.FC = () => {
                 onChange={(_, newValue) => setSelectedDevice(newValue)}
                 renderInput={(params) => (
                   <TextField
-                    {...params}
+                    // MUI types these params with explicitly-optional properties, which
+                    // exactOptionalPropertyTypes refuses to spread onto TextField. The
+                    // values themselves come straight from Autocomplete.
+                    {...(params as React.ComponentProps<typeof TextField>)}
                     label="Select Device to Retire"
                     required
                     fullWidth
@@ -632,5 +604,4 @@ const DeviceRetirementPage: React.FC = () => {
     </Box>
   );
 };
-
 export default DeviceRetirementPage;
