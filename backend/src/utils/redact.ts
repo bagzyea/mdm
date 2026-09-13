@@ -33,6 +33,9 @@ const SENSITIVE_KEY_PATTERNS = [
   'otp',
   'mfacode',
   'securityanswer',
+  // An enrollment code authorises a device to join the fleet — a credential, and
+  // single-use only once redeemed, so it must not persist in logs or event rows.
+  'enrollmentcode',
 ];
 
 /**

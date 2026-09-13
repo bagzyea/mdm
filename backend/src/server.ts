@@ -134,9 +134,32 @@ const enrollmentRateLimiter = rateLimit({
 // Public routes (no authentication required)
 app.use('/api/auth', authRoutes);
 
-// Public device enrollment endpoint — rate-limited
-const { enrollDevice } = require('./controllers/deviceController');
-app.post('/api/devices/enroll', enrollmentRateLimiter, enrollDevice);
+// Public device enrollment endpoints — rate-limited.
+//
+// Enrollment is public because a device has no credential before it enrolls, but it now
+// requires a single-use, expiring, admin-issued code (findings F-02, F-13). The token
+// refresh endpoint is public for the same reason: the caller's access token has expired
+// by definition, so it authenticates with its refresh token instead.
+const { enrollDevice, refreshDeviceToken } = require('./controllers/deviceController');
+const { validate: validateBody } = require('./middleware/validation');
+const {
+  enrollDeviceSchema,
+  refreshDeviceTokenSchema,
+} = require('./schemas/deviceSchemas');
+
+app.post(
+  '/api/devices/enroll',
+  enrollmentRateLimiter,
+  validateBody(enrollDeviceSchema),
+  enrollDevice
+);
+
+app.post(
+  '/api/devices/token/refresh',
+  enrollmentRateLimiter,
+  validateBody(refreshDeviceTokenSchema),
+  refreshDeviceToken
+);
 
 // Protected API routes.
 //

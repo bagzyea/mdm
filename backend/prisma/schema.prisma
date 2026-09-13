@@ -733,3 +733,65 @@ enum UploadSessionStatus {
   CANCELLED
 }
 
+
+// ---------------------------------------------------------------------------
+// Enrollment and device credentials (findings F-02, F-13)
+//
+// POST /api/devices/enroll accepted any deviceId the caller invented and returned
+// a 365-day JWT with role DEVICE. The enrollment code was optional and validated
+// only for length >= 4 — the TODO for checking it against the database was still
+// in the code — and generated codes were never persisted, so they could not be
+// validated, expired or revoked. Posting an existing deviceId took the update
+// branch and issued a fresh token for that device, so any device identity could
+// be claimed or stolen by anyone who could reach the server.
+//
+// Device tokens were also only signature-checked, never compared against device
+// state, so a retired, wiped or stolen tablet held a valid credential for a year
+// and there was no revocation path at all.
+// ---------------------------------------------------------------------------
+
+/// A single-use, expiring code that authorises one device to enroll.
+model EnrollmentToken {
+  id             String    @id @default(cuid())
+  /// SHA-256 of the plaintext code. The code itself is shown once, at creation,
+  /// and is never stored — a leaked database gives no usable enrollment codes.
+  tokenHash      String    @unique
+  /// User id of the administrator who issued it.
+  createdBy      String
+  /// Optional binding to a pre-registered device or hardware serial. When set,
+  /// only that device may redeem the code.
+  boundSerial    String?
+  maxUses        Int       @default(1)
+  useCount       Int       @default(0)
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  revokedBy      String?
+  /// deviceId that most recently redeemed this token, for audit.
+  lastUsedBy     String?
+  lastUsedAt     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([expiresAt])
+  @@index([boundSerial])
+}
+
+/// A device's long-lived refresh credential. Access tokens are short-lived and
+/// are obtained by presenting one of these, which is re-checked against device
+/// status on every use — giving the revocation path device tokens never had.
+model DeviceRefreshToken {
+  id          String    @id @default(cuid())
+  /// SHA-256 of the plaintext refresh token; the plaintext is never stored.
+  tokenHash   String    @unique
+  /// Device.deviceId (the agent-facing identifier), not Device.id.
+  deviceId    String
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  revokedBy   String?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([deviceId])
+  @@index([expiresAt])
+}

@@ -137,15 +137,22 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '24h',
 
   /**
-   * Device access token lifetime, now configurable rather than hardcoded.
+   * Device access token lifetime.
    *
-   * The default remains 365d to match current device behaviour — shortening it
-   * without a refresh-token flow would strand the fleet the moment tokens
-   * expired. Once enrollment issues a refresh token that is re-checked against
-   * device status (findings F-02 / F-13), this default should drop to '24h'.
-   * Operators who can re-enroll can shorten it today via DEVICE_TOKEN_EXPIRES_IN.
+   * Device tokens used to be issued for 365 days with no revocation path, so a
+   * stolen or retired tablet held a valid credential for a year. Now that
+   * enrollment issues a refresh token that is re-checked against device status on
+   * every use (findings F-02 / F-13), this is short: it bounds how long a revoked
+   * device can keep talking to the server.
    */
-  deviceTokenExpiresIn: process.env.DEVICE_TOKEN_EXPIRES_IN ?? '365d',
+  deviceAccessTokenTtlSeconds: Number(process.env.DEVICE_ACCESS_TOKEN_TTL_SECONDS ?? 60 * 60),
+
+  /**
+   * Device refresh token lifetime. Long, because census enumerators may be out of
+   * network coverage for a working week — but revocable, unlike the old 365-day
+   * access token, and checked against device status every time it is used.
+   */
+  deviceRefreshTokenTtlDays: Number(process.env.DEVICE_REFRESH_TOKEN_TTL_DAYS ?? 90),
 
   /** 32-byte AES-256-GCM key for data at rest. */
   encryptionKey: resolveEncryptionKey(),

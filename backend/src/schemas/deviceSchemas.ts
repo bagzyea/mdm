@@ -112,3 +112,40 @@ export const deviceQuerySchema = Joi.object({
   manufacturer: Joi.string().max(100),
   search: Joi.string().max(100).allow(''),
 }).unknown(true);
+
+/** Body of POST /api/devices/enrollment-code (admin issues a code). */
+export const createEnrollmentCodeSchema = Joi.object({
+  boundSerial: deviceIdentifier,
+  ttlMinutes: Joi.number().integer().min(1).max(60 * 24 * 30),
+  maxUses: Joi.number().integer().min(1).max(1000),
+  notes: Joi.string().max(500),
+});
+
+/** Body of POST /api/devices/token/refresh (device exchanges a refresh token). */
+export const refreshDeviceTokenSchema = Joi.object({
+  refreshToken: Joi.string().min(20).max(512).required(),
+});
+
+/**
+ * Body of POST /api/devices/enroll.
+ *
+ * The enrollment code is now REQUIRED — it was optional and checked only for
+ * length >= 4 (finding F-02). Device details are permissive because the agent's
+ * DeviceInfo shape still differs between the backend, the controller and the Kotlin
+ * model (finding F-19), and tightening it here would break enrollment before that
+ * contract is unified.
+ */
+export const enrollDeviceSchema = Joi.object({
+  enrollmentCode: Joi.string().min(4).max(100).required().messages({
+    'any.required': 'An enrollment code is required',
+    'string.empty': 'An enrollment code is required',
+  }),
+  organizationId: Joi.string().max(100),
+  deviceInfo: Joi.object({
+    deviceId: deviceIdentifier.required(),
+  }).unknown(true),
+  deviceId: deviceIdentifier,
+})
+  .unknown(true)
+  .or('deviceInfo', 'deviceId')
+  .messages({ 'object.missing': 'deviceInfo.deviceId is required' });

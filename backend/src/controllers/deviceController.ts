@@ -1,34 +1,17 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
-import crypto from 'crypto';
-import * as jwt from 'jsonwebtoken';
-import config from '../config/env';
+import { redactSensitive } from '../utils/redact';
+import {
+  consumeEnrollmentToken,
+  createEnrollmentToken,
+  issueDeviceCredentials,
+  refreshDeviceCredentials,
+  revokeDeviceTokens,
+  EnrollmentError,
+} from '../services/enrollmentService';
 
 const prisma = new PrismaClient();
-
-const JWT_SECRET = config.jwtSecret;
-
-/**
- * Generate a JWT device token with role=DEVICE so that the server's
- * authService.verifyToken() can authenticate websocket connections.
- */
-const generateDeviceToken = (deviceId: string): string => {
-  return jwt.sign(
-    {
-      userId: deviceId,
-      username: deviceId,
-      email: `${deviceId}@device.mdm`,
-      role: 'DEVICE',
-    },
-    JWT_SECRET,
-    {
-      expiresIn: config.deviceTokenExpiresIn,
-      issuer: 'mdm-system',
-      audience: 'mdm-users',
-    } as jwt.SignOptions
-  );
-};
 
 export const getAllDevices = async (req: Request, res: Response) => {
   try {
@@ -138,7 +121,8 @@ export const getDevice = async (req: Request, res: Response) => {
 
 export const enrollDevice = async (req: Request, res: Response) => {
   try {
-    console.log('Enrollment request received:', req.body);
+    // The body carries the enrollment code, so it is not logged verbatim.
+    console.log('Enrollment request received for device:', req.body?.deviceInfo?.deviceId ?? req.body?.deviceId);
     
     // Handle both direct DeviceInfo and EnrollmentRequest formats
     const enrollmentData = req.body;
@@ -153,20 +137,25 @@ export const enrollDevice = async (req: Request, res: Response) => {
       });
     }
 
-    // Optional: Validate enrollment code if provided
-    // In a full implementation, you would check against stored codes and expiration
-    if (enrollmentCode) {
-      console.log('Enrollment code provided:', enrollmentCode);
-      // TODO: Add database validation for enrollment codes
-      // For now, we accept any non-empty enrollment code
-      if (enrollmentCode.length < 4) {
-        return res.status(400).json({
+    // Enrollment now requires a single-use, expiring, admin-issued code bound
+    // optionally to a pre-registered serial (findings F-02, F-13). Previously the
+    // code was optional, checked only for length >= 4, and generated codes were
+    // never persisted — so device identity could be claimed by anyone who could
+    // reach this endpoint, and re-posting an existing deviceId minted a fresh
+    // credential for that device.
+    try {
+      await consumeEnrollmentToken(enrollmentCode, deviceInfo.deviceId);
+    } catch (error) {
+      if (error instanceof EnrollmentError) {
+        return res.status(error.statusCode).json({
           success: false,
-          error: 'Invalid enrollment code format'
+          error: error.message,
+          code: error.code,
         });
       }
+      throw error;
     }
-    
+
     // Check if device already exists
     const existingDevice = await prisma.device.findUnique({
       where: { deviceId: deviceInfo.deviceId }
@@ -199,16 +188,19 @@ export const enrollDevice = async (req: Request, res: Response) => {
         }
       });
       
-      // Generate device token for authentication
-      const deviceToken = generateDeviceToken(deviceInfo.deviceId);
-      
-      console.log('Device re-enrolled successfully:', deviceInfo.deviceId);
-      
+      // Issuing credentials revokes any the device already held, so a stolen
+      // credential does not survive a legitimate re-enrollment.
+      const credentials = await issueDeviceCredentials(updatedDevice.deviceId);
+
       return res.status(200).json({
         success: true,
         message: 'Device re-enrolled successfully',
         deviceId: updatedDevice.deviceId,
-        deviceToken,
+        // `deviceToken` is retained under its original name for agent compatibility.
+        deviceToken: credentials.accessToken,
+        expiresIn: credentials.expiresIn,
+        refreshToken: credentials.refreshToken,
+        refreshTokenExpiresAt: credentials.refreshTokenExpiresAt.toISOString(),
         serverEndpoints: {
           api: process.env.API_BASE_URL || "http://localhost:5001/api/",
           websocket: process.env.WEBSOCKET_URL || "http://localhost:5001"
@@ -239,15 +231,16 @@ export const enrollDevice = async (req: Request, res: Response) => {
       }
     });
     
-    // Generate device token for authentication
-    const deviceToken = generateDeviceToken(device.deviceId);
-    
+    const credentials = await issueDeviceCredentials(device.deviceId);
+
     // Log enrollment event
     await prisma.deviceEvent.create({
       data: {
         deviceId: device.id,
         eventType: 'ENROLLMENT',
-        eventData: { ...enrollmentData, deviceToken: '[REDACTED]' } as any
+        // enrollmentData is the request body, which carries the enrollment code —
+        // a credential that must not be persisted in the event log.
+        eventData: redactSensitive({ ...enrollmentData, deviceToken: '[REDACTED]' }) as any
       }
     });
     
@@ -257,7 +250,10 @@ export const enrollDevice = async (req: Request, res: Response) => {
       success: true,
       message: 'Device enrolled successfully',
       deviceId: device.deviceId,
-      deviceToken,
+      deviceToken: credentials.accessToken,
+      expiresIn: credentials.expiresIn,
+      refreshToken: credentials.refreshToken,
+      refreshTokenExpiresAt: credentials.refreshTokenExpiresAt.toISOString(),
       serverEndpoints: {
         api: process.env.API_BASE_URL || "http://localhost:5001/api/",
         websocket: process.env.WEBSOCKET_URL || "http://localhost:5001"
@@ -284,36 +280,86 @@ export const enrollDevice = async (req: Request, res: Response) => {
 /**
  * Generate enrollment code for device enrollment
  */
+/**
+ * Issue an enrollment code (findings F-02, F-13).
+ *
+ * This previously returned `crypto.randomBytes(4)` hex that was never persisted, so the
+ * code it handed out could not be validated, expired or revoked by anything — enrollment
+ * accepted any string of length >= 4 regardless.
+ *
+ * The code is now stored as a hash and returned in plaintext exactly once.
+ */
 export const generateEnrollmentCode = async (req: Request, res: Response) => {
   try {
-    // Generate a secure enrollment code
-    const enrollmentCode = crypto.randomBytes(4).toString('hex').toUpperCase(); // 8-character code
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-    
-    // For now, we'll just return the code. In a full implementation, 
-    // you might want to store it in a database table for validation
-    const enrollmentData = {
-      code: enrollmentCode,
-      expiresAt: expiresAt.toISOString(),
-      createdAt: new Date().toISOString(),
-      isUsed: false
-    };
-    
-    console.log('Generated enrollment code:', enrollmentCode);
-    
-    res.json({
+    const { boundSerial, ttlMinutes, maxUses, notes } = req.body ?? {};
+
+    const token = await createEnrollmentToken({
+      createdBy: req.user?.userId || 'unknown',
+      boundSerial,
+      ttlMinutes,
+      maxUses,
+      notes,
+    });
+
+    return res.status(201).json({
       success: true,
-      code: enrollmentCode,
-      expiresAt: enrollmentData.expiresAt,
-      validFor: '1 hour'
+      id: token.id,
+      // Shown once. It is stored only as a hash and cannot be retrieved again.
+      code: token.code,
+      expiresAt: token.expiresAt.toISOString(),
+      boundSerial: token.boundSerial,
+      maxUses: token.maxUses,
     });
-    
   } catch (error) {
+    if (error instanceof EnrollmentError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+      });
+    }
+
     console.error('Error generating enrollment code:', error);
-    res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      error: 'Failed to generate enrollment code' 
+      error: 'Failed to generate enrollment code'
     });
+  }
+};
+
+/**
+ * Exchange a device refresh token for a fresh access token.
+ *
+ * This is the revocation path device credentials previously lacked (finding F-13):
+ * device tokens were only signature-checked and never compared against device state, so
+ * a retired, wiped or stolen tablet kept a valid 365-day credential. The device's status
+ * is now re-checked on every refresh.
+ *
+ * Public by necessity — the caller's expired access token cannot authenticate it — and
+ * rate-limited at the mount point.
+ */
+export const refreshDeviceToken = async (req: Request, res: Response) => {
+  try {
+    const { refreshToken } = req.body ?? {};
+    const credentials = await refreshDeviceCredentials(refreshToken);
+
+    return res.json({
+      success: true,
+      deviceToken: credentials.accessToken,
+      expiresIn: credentials.expiresIn,
+      refreshTokenExpiresAt: credentials.refreshTokenExpiresAt.toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof EnrollmentError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+      });
+    }
+
+    console.error('Error refreshing device token:', error);
+    return res.status(500).json({ success: false, error: 'Failed to refresh device token' });
   }
 };
 
@@ -651,13 +697,19 @@ export const deleteDevice = async (req: Request, res: Response) => {
       });
     }
     
+    // Revoke the device's credentials before deleting it, so a deleted device cannot
+    // keep using an unexpired access token or refresh into a new one (finding F-13).
+    await revokeDeviceTokens(deviceId as string, req.user?.userId || 'device-deleted');
+
     // Log device deletion event before deletion
     await prisma.deviceEvent.create({
       data: {
         deviceId: device.id,
         eventType: 'DEVICE_DELETED',
         eventData: {
-          deletedBy: req.user?.id || 'system',
+          // The token payload field is `userId`; `req.user?.id` was always undefined,
+          // so every deletion was attributed to 'system' (finding F-21).
+          deletedBy: req.user?.userId || 'system',
           force,
           reason: 'Manual deletion from admin dashboard'
         } as any

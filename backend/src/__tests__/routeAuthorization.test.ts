@@ -48,6 +48,9 @@ const EXPECTED_MOUNTS = [
  */
 const INTENTIONALLY_PUBLIC = [
   'POST /api/devices/enroll',
+  // The caller's access token has expired by definition; it authenticates with its
+  // refresh token, which is re-checked against device status (finding F-13).
+  'POST /api/devices/token/refresh',
   'POST /api/auth/login',
   'POST /api/auth/refresh',
 ];

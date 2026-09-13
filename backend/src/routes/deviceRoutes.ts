@@ -20,6 +20,7 @@ import {
   deviceHeartbeatSchema,
   sendDeviceCommandSchema,
   deviceAnalyticsSchema,
+  createEnrollmentCodeSchema,
 } from '../schemas/deviceSchemas';
 
 const router = express.Router();
@@ -40,7 +41,7 @@ router.get('/:deviceId/analytics', requirePermission('devices', 'read'), validat
 // The unauthenticated enrollment path devices actually use is mounted separately in
 // server.ts. This authenticated variant lets an operator enroll on a device's behalf.
 router.post('/enroll', requirePermission('devices', 'create'), enrollDevice);
-router.post('/enrollment-code', requirePermission('devices', 'create'), generateEnrollmentCode);
+router.post('/enrollment-code', requirePermission('devices', 'create'), validate(createEnrollmentCodeSchema), generateEnrollmentCode);
 
 // --- Mutations ---
 // Dispatching a command is a commands action, not a devices one: guarding this with
