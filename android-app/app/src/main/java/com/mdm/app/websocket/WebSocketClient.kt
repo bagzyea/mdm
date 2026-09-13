@@ -236,6 +236,28 @@ class WebSocketClient private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Emit a named Socket.IO event.
+     *
+     * The server listens on distinct events — `deviceHeartbeat`, `commandResponse`,
+     * `provisioningProgress` — and its generic `message` handler understands only
+     * 'heartbeat' and 'command_result'. Anything else sent as a `message` is silently
+     * dropped, which is what was happening to provisioning progress.
+     */
+    fun sendEvent(event: String, payload: org.json.JSONObject) {
+        if (!isConnected()) {
+            Log.w(TAG, "Cannot send $event: Socket.IO not connected")
+            return
+        }
+
+        try {
+            socket?.emit(event, payload)
+            Log.d(TAG, "Sent event: $event")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send event $event", e)
+        }
+    }
+
     fun sendMessage(message: String) {
         if (!isConnected()) {
             Log.w(TAG, "Cannot send message: Socket.IO not connected")

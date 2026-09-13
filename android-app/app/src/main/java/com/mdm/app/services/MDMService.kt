@@ -415,8 +415,19 @@ class MDMService(private val context: Context) {
         webSocketClient.setCommandListener(listener)
     }
 
+    /**
+     * Send a payload on the generic `message` channel.
+     *
+     * Named "test" but used on the production path — command results go through here.
+     * Prefer sendEvent() for anything the server has a dedicated handler for.
+     */
     fun sendTestMessage(data: Map<String, Any?>) {
         webSocketClient.sendMessage(data)
+    }
+
+    /** Emit a named Socket.IO event the server has a handler for. */
+    fun sendEvent(event: String, payload: org.json.JSONObject) {
+        webSocketClient.sendEvent(event, payload)
     }
     
     fun reconnectWithNewUrl(serverUrl: String, deviceToken: String) {

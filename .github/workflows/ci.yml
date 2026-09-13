@@ -1,9 +1,9 @@
 name: CI Pipeline
 
 # Every job here is a gate. Nothing that can fail is marked continue-on-error, because a
-# pipeline that reports green while a step failed is worse than no pipeline — the repo
-# already had an Android job that could never have passed (it chmod'd a gradlew that is
-# not checked in) and a backend job whose `npm ci` failed on a file: dependency.
+# pipeline that reports green while a step failed is worse than no pipeline — this repo
+# had an Android job that could never have passed (it chmod'd a gradlew that was not
+# checked in) and a backend job whose `npm ci` failed on a file: dependency.
 
 on:
   push:
@@ -146,16 +146,14 @@ jobs:
         run: npm audit --audit-level=critical
 
   # ---------------------------------------------------------------------------
-  # The Android job is deliberately NOT part of the required set yet: the Gradle
-  # wrapper script is missing from the repository (android-app/gradlew.bat and
-  # gradle/wrapper/ are committed, gradlew is not), so it cannot run. Restoring
-  # the wrapper and turning this into a gate is tracked as part of the agent
-  # re-platform work — until then the Kotlin in this repo is entirely unbuilt.
+  # A real gate as of 13 Sep 2026. The Gradle wrapper is now committed and the
+  # agent compiles; before that this job began by chmod-ing a gradlew that was not
+  # in the repository, so it could never have run — which is why two pre-existing
+  # Kotlin compile errors went unnoticed.
   # ---------------------------------------------------------------------------
   android-build:
     name: Android Build Validation
     runs-on: ubuntu-latest
-    if: false # See the note above: android-app/gradlew is not checked in.
 
     steps:
       - uses: actions/checkout@v4

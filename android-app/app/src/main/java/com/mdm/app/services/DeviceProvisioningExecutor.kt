@@ -2,6 +2,7 @@ package com.mdm.app.services
 
 import android.content.Context
 import android.util.Log
+import com.mdm.app.models.AppInstallationPackage
 import com.mdm.app.utils.PreferenceManager
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -218,7 +219,6 @@ class DeviceProvisioningExecutor(
     ) {
         try {
             val msg = JSONObject().apply {
-                put("type", "provisioning_progress")
                 put("sessionId", sessionId)
                 put("deviceId", preferenceManager.getDeviceId() ?: "unknown")
                 put("commandId", commandId)
@@ -234,27 +234,17 @@ class DeviceProvisioningExecutor(
 
             Log.d(TAG, "Reporting progress: step=$step, completed=$completedSteps/$totalSteps")
 
-            // Send via WebSocket to backend
-            mdmService.sendMessage(msg)
+            // Emitted as its own event, not wrapped in a generic `message`. The
+            // server's `message` handler only understands 'heartbeat' and
+            // 'command_result', so progress sent that way was silently discarded — the
+            // server listens for 'provisioningProgress'.
+            mdmService.sendEvent("provisioningProgress", msg)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to report progress", e)
             // Continue even if reporting fails
         }
     }
 }
-
-/**
- * Data class representing an app to be installed during provisioning
- */
-data class AppInstallationPackage(
-    val packageName: String,
-    val appName: String,
-    val apkUrl: String,
-    val apkHash: String,
-    val permissions: List<String>,
-    val installOrder: Int,
-    val isRequired: Boolean
-)
 
 /**
  * Result of an app download/install operation

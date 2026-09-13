@@ -254,32 +254,46 @@ data class AppInstallationPackage(
     @SerializedName("appName")
     val appName: String,
     
+    // Defaults below: the PROVISION_DEVICE payload carries packageName, appName,
+    // apkUrl, apkHash, permissions, installOrder and isRequired. The remaining fields
+    // are descriptive metadata the server does not send, so they default rather than
+    // being required — a second, incompatible copy of this class previously existed in
+    // DeviceProvisioningExecutor.kt purely to work around that, and the two could not
+    // be passed to each other. That mismatch is why the agent did not compile.
     @SerializedName("version")
-    val version: String,
-    
+    val version: String = "",
+
     @SerializedName("apkUrl")
     val apkUrl: String,
-    
+
     @SerializedName("apkHash")
     val apkHash: String,
-    
+
     @SerializedName("size")
-    val size: Long,
-    
+    val size: Long = 0L,
+
     @SerializedName("permissions")
     val permissions: List<String> = emptyList(),
-    
+
     @SerializedName("minSdkVersion")
-    val minSdkVersion: Int,
-    
+    val minSdkVersion: Int = 0,
+
     @SerializedName("targetSdkVersion")
-    val targetSdkVersion: Int,
-    
+    val targetSdkVersion: Int = 0,
+
     @SerializedName("isSystemApp")
     val isSystemApp: Boolean = false,
-    
+
     @SerializedName("requiresDeviceAdmin")
-    val requiresDeviceAdmin: Boolean = false
+    val requiresDeviceAdmin: Boolean = false,
+
+    /** Order in which this app is installed during provisioning. */
+    @SerializedName("installOrder")
+    val installOrder: Int = 0,
+
+    /** Whether provisioning fails if this app cannot be installed. */
+    @SerializedName("isRequired")
+    val isRequired: Boolean = false
 )
 
 /**
