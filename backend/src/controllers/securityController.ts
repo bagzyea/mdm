@@ -6,7 +6,7 @@ import logger from '../logger';
 
 const prisma = new PrismaClient();
 
-export const getSecurityStatus = async (req: Request, res: Response) => {
+export const getSecurityStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     
@@ -15,7 +15,8 @@ export const getSecurityStatus = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     let securityStatus = await prisma.securityStatus.findUnique({
@@ -42,7 +43,7 @@ export const getSecurityStatus = async (req: Request, res: Response) => {
   }
 };
 
-export const updateSecurityStatus = async (req: Request, res: Response) => {
+export const updateSecurityStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const securityData: Partial<SecurityStatus> = req.body;
@@ -52,7 +53,8 @@ export const updateSecurityStatus = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     let securityStatus = await prisma.securityStatus.findUnique({
@@ -103,7 +105,7 @@ export const updateSecurityStatus = async (req: Request, res: Response) => {
   }
 };
 
-export const runComplianceCheck = async (req: Request, res: Response) => {
+export const runComplianceCheck = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const complianceCheck: ComplianceCheck = req.body;
@@ -113,7 +115,8 @@ export const runComplianceCheck = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Run compliance checks based on requested types
@@ -160,7 +163,7 @@ export const runComplianceCheck = async (req: Request, res: Response) => {
   }
 };
 
-export const getComplianceReports = async (req: Request, res: Response) => {
+export const getComplianceReports = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { limit = 10, type } = req.query;
@@ -170,7 +173,8 @@ export const getComplianceReports = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     const whereClause: any = { deviceId: device.id };
@@ -191,7 +195,7 @@ export const getComplianceReports = async (req: Request, res: Response) => {
   }
 };
 
-export const enforceEncryptionPolicy = async (req: Request, res: Response) => {
+export const enforceEncryptionPolicy = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const encryptionPolicy: EncryptionPolicy = req.body;
@@ -201,7 +205,8 @@ export const enforceEncryptionPolicy = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Update security status with encryption policy
@@ -250,7 +255,7 @@ export const enforceEncryptionPolicy = async (req: Request, res: Response) => {
   }
 };
 
-export const detectRootStatus = async (req: Request, res: Response) => {
+export const detectRootStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     
@@ -259,7 +264,8 @@ export const detectRootStatus = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Send root detection command to device

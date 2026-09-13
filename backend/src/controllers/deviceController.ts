@@ -87,7 +87,7 @@ export const getAllDevices = async (req: Request, res: Response) => {
   }
 };
 
-export const getDevice = async (req: Request, res: Response) => {
+export const getDevice = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const device = await prisma.device.findUnique({
@@ -100,7 +100,8 @@ export const getDevice = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Convert BigInt values to strings for JSON serialization
@@ -131,10 +132,11 @@ export const enrollDevice = async (req: Request, res: Response) => {
     const organizationId = enrollmentData.organizationId;
     
     if (!deviceInfo || !deviceInfo.deviceId) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         success: false,
         error: 'Invalid enrollment data: deviceInfo and deviceId are required' 
       });
+      return;
     }
 
     // Enrollment now requires a single-use, expiring, admin-issued code bound
@@ -147,11 +149,12 @@ export const enrollDevice = async (req: Request, res: Response) => {
       await consumeEnrollmentToken(enrollmentCode, deviceInfo.deviceId);
     } catch (error) {
       if (error instanceof EnrollmentError) {
-        return res.status(error.statusCode).json({
+        res.status(error.statusCode).json({
           success: false,
           error: error.message,
           code: error.code,
         });
+        return;
       }
       throw error;
     }
@@ -192,7 +195,7 @@ export const enrollDevice = async (req: Request, res: Response) => {
       // credential does not survive a legitimate re-enrollment.
       const credentials = await issueDeviceCredentials(updatedDevice.deviceId);
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: 'Device re-enrolled successfully',
         deviceId: updatedDevice.deviceId,
@@ -206,6 +209,7 @@ export const enrollDevice = async (req: Request, res: Response) => {
           websocket: process.env.WEBSOCKET_URL || "http://localhost:5001"
         }
       });
+      return;
     }
     
     const device = await prisma.device.create({
@@ -264,10 +268,11 @@ export const enrollDevice = async (req: Request, res: Response) => {
     
     // Check if it's a Prisma constraint error
     if (error.code === 'P2002') {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         success: false,
         error: 'Device with this ID or fingerprint already exists' 
       });
+      return;
     }
     
     res.status(500).json({ 
@@ -301,7 +306,7 @@ export const generateEnrollmentCode = async (req: Request, res: Response) => {
       notes,
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       id: token.id,
       // Shown once. It is stored only as a hash and cannot be retrieved again.
@@ -310,20 +315,23 @@ export const generateEnrollmentCode = async (req: Request, res: Response) => {
       boundSerial: token.boundSerial,
       maxUses: token.maxUses,
     });
+    return;
   } catch (error) {
     if (error instanceof EnrollmentError) {
-      return res.status(error.statusCode).json({
+      res.status(error.statusCode).json({
         success: false,
         error: error.message,
         code: error.code,
       });
+      return;
     }
 
     console.error('Error generating enrollment code:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: 'Failed to generate enrollment code'
     });
+    return;
   }
 };
 
@@ -343,27 +351,30 @@ export const refreshDeviceToken = async (req: Request, res: Response) => {
     const { refreshToken } = req.body ?? {};
     const credentials = await refreshDeviceCredentials(refreshToken);
 
-    return res.json({
+    res.json({
       success: true,
       deviceToken: credentials.accessToken,
       expiresIn: credentials.expiresIn,
       refreshTokenExpiresAt: credentials.refreshTokenExpiresAt.toISOString(),
     });
+    return;
   } catch (error) {
     if (error instanceof EnrollmentError) {
-      return res.status(error.statusCode).json({
+      res.status(error.statusCode).json({
         success: false,
         error: error.message,
         code: error.code,
       });
+      return;
     }
 
     console.error('Error refreshing device token:', error);
-    return res.status(500).json({ success: false, error: 'Failed to refresh device token' });
+    res.status(500).json({ success: false, error: 'Failed to refresh device token' });
+    return;
   }
 };
 
-export const sendCommand = async (req: Request, res: Response) => {
+export const sendCommand = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const commandPayload: CommandPayload = req.body;
@@ -373,7 +384,8 @@ export const sendCommand = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     const command = await prisma.remoteCommand.create({
@@ -401,7 +413,7 @@ export const sendCommand = async (req: Request, res: Response) => {
   }
 };
 
-export const updateDeviceStatus = async (req: Request, res: Response) => {
+export const updateDeviceStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { status, location, batteryLevel, isCharging, networkInfo } = req.body;
@@ -451,7 +463,7 @@ export const updateDeviceStatus = async (req: Request, res: Response) => {
   }
 };
 
-export const deviceHeartbeat = async (req: Request, res: Response) => {
+export const deviceHeartbeat = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { batteryLevel, isCharging, location, networkInfo, systemHealth } = req.body;
@@ -512,7 +524,7 @@ export const deviceHeartbeat = async (req: Request, res: Response) => {
 };
 
 // Enhanced monitoring methods
-export const updateDeviceAnalytics = async (req: Request, res: Response) => {
+export const updateDeviceAnalytics = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const analytics: DeviceAnalytics = req.body;
@@ -522,7 +534,8 @@ export const updateDeviceAnalytics = async (req: Request, res: Response) => {
     });
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
 
     const updatedDevice = await prisma.device.update({
@@ -566,7 +579,7 @@ export const updateDeviceAnalytics = async (req: Request, res: Response) => {
   }
 };
 
-export const getDeviceAnalytics = async (req: Request, res: Response) => {
+export const getDeviceAnalytics = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { days = 7 } = req.query;
@@ -590,7 +603,8 @@ export const getDeviceAnalytics = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Get historical analytics data
@@ -669,7 +683,7 @@ export const getDeviceHealthSummary = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteDevice = async (req: Request, res: Response) => {
+export const deleteDevice = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { force = false } = req.query;
@@ -685,16 +699,18 @@ export const deleteDevice = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     // Check if device has pending commands and force is not set
     if (device.commands.length > 0 && !force) {
-      return res.status(409).json({
+      res.status(409).json({
         error: 'Device has pending commands',
         message: 'Complete or cancel pending commands first, or use force=true',
         pendingCommands: device.commands.length
       });
+      return;
     }
     
     // Revoke the device's credentials before deleting it, so a deleted device cannot

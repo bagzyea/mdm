@@ -42,7 +42,7 @@ export const getAllProvisioningProfiles = async (req: Request, res: Response) =>
   }
 };
 
-export const getProvisioningProfile = async (req: Request, res: Response) => {
+export const getProvisioningProfile = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -75,7 +75,8 @@ export const getProvisioningProfile = async (req: Request, res: Response) => {
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     res.json(profile);
@@ -94,19 +95,21 @@ export const createProvisioningProfile = async (req: Request, res: Response) => 
     const validDeviceModels = ['Samsung-T225', 'Samsung-T295', 'ZTE', 'MiOne', 'Laxton'];
     const invalidModels = data.deviceModels.filter(model => !validDeviceModels.includes(model));
     if (invalidModels.length > 0) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Invalid device models',
         details: `Invalid models: ${invalidModels.join(', ')}`
       });
+      return;
     }
 
     // Validate applications
     for (const app of data.applications) {
       if (!app.packageName || !app.appName) {
-        return res.status(400).json({ 
+        res.status(400).json({ 
           error: 'Application validation failed',
           details: 'Package name and app name are required for all applications'
         });
+        return;
       }
     }
 
@@ -157,7 +160,7 @@ export const createProvisioningProfile = async (req: Request, res: Response) => 
   }
 };
 
-export const updateProvisioningProfile = async (req: Request, res: Response) => {
+export const updateProvisioningProfile = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const data: Partial<CreateProvisioningProfileRequest> = req.body;
@@ -168,15 +171,17 @@ export const updateProvisioningProfile = async (req: Request, res: Response) => 
     });
 
     if (!existingProfile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     // Prevent updates if there are active sessions
     if (existingProfile.sessions.length > 0) {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         error: 'Cannot update profile with active provisioning sessions',
         details: 'Complete or cancel active sessions before updating'
       });
+      return;
     }
 
     const updateData: any = {};
@@ -248,7 +253,7 @@ export const updateProvisioningProfile = async (req: Request, res: Response) => 
   }
 };
 
-export const deleteProvisioningProfile = async (req: Request, res: Response) => {
+export const deleteProvisioningProfile = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const { force = 'false' } = req.query;
@@ -264,7 +269,8 @@ export const deleteProvisioningProfile = async (req: Request, res: Response) => 
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     // Check for active sessions
@@ -273,13 +279,14 @@ export const deleteProvisioningProfile = async (req: Request, res: Response) => 
     );
 
     if (activeSessions.length > 0 && force !== 'true') {
-      return res.status(409).json({
+      res.status(409).json({
         error: 'Cannot delete profile with active sessions',
         details: {
           activeSessions: activeSessions.length,
           totalSessions: profile._count.sessions
         }
       });
+      return;
     }
 
     if (force === 'true') {
@@ -304,7 +311,7 @@ export const deleteProvisioningProfile = async (req: Request, res: Response) => 
   }
 };
 
-export const getCompatibleDevices = async (req: Request, res: Response) => {
+export const getCompatibleDevices = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -314,7 +321,8 @@ export const getCompatibleDevices = async (req: Request, res: Response) => {
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     // Find devices that match the supported models
@@ -352,7 +360,7 @@ export const getCompatibleDevices = async (req: Request, res: Response) => {
   }
 };
 
-export const validateProfile = async (req: Request, res: Response) => {
+export const validateProfile = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -365,7 +373,8 @@ export const validateProfile = async (req: Request, res: Response) => {
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     const validation = {
@@ -420,7 +429,7 @@ export const validateProfile = async (req: Request, res: Response) => {
 };
 
 // Bulk Application Deployment
-export const bulkDeployApplications = async (req: Request, res: Response) => {
+export const bulkDeployApplications = async (req: Request<{ profileId: string }>, res: Response) => {
   try {
     const { profileId } = req.params;
     const { deviceIds, applications, options = {} } = req.body;
@@ -437,7 +446,8 @@ export const bulkDeployApplications = async (req: Request, res: Response) => {
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     // Validate devices exist
@@ -446,7 +456,8 @@ export const bulkDeployApplications = async (req: Request, res: Response) => {
     });
 
     if (devices.length !== deviceIds.length) {
-      return res.status(400).json({ error: 'Some devices not found' });
+      res.status(400).json({ error: 'Some devices not found' });
+      return;
     }
 
     // Create deployment session
@@ -501,7 +512,7 @@ export const bulkDeployApplications = async (req: Request, res: Response) => {
 };
 
 // Get deployment progress
-export const getDeploymentProgress = async (req: Request, res: Response) => {
+export const getDeploymentProgress = async (req: Request<{ sessionId: string }>, res: Response) => {
   try {
     const { sessionId } = req.params;
 
@@ -531,7 +542,8 @@ export const getDeploymentProgress = async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Deployment session not found' });
+      res.status(404).json({ error: 'Deployment session not found' });
+      return;
     }
 
     // Calculate progress statistics
@@ -576,7 +588,7 @@ export const getDeploymentProgress = async (req: Request, res: Response) => {
 };
 
 // Cancel deployment
-export const cancelDeployment = async (req: Request, res: Response) => {
+export const cancelDeployment = async (req: Request<{ sessionId: string }>, res: Response) => {
   try {
     const { sessionId } = req.params;
 
@@ -585,11 +597,13 @@ export const cancelDeployment = async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Deployment session not found' });
+      res.status(404).json({ error: 'Deployment session not found' });
+      return;
     }
 
     if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
-      return res.status(400).json({ error: 'Session cannot be cancelled' });
+      res.status(400).json({ error: 'Session cannot be cancelled' });
+      return;
     }
 
     // Update session status
@@ -632,7 +646,8 @@ export const createFieldConfiguration = async (req: Request, res: Response) => {
 
     // Validate required fields
     if (!name || !deviceModels || !configurations) {
-      return res.status(400).json({ error: 'Name, device models, and configurations are required' });
+      res.status(400).json({ error: 'Name, device models, and configurations are required' });
+      return;
     }
 
     // Create field configuration
@@ -673,7 +688,7 @@ export const getFieldConfigurations = async (req: Request, res: Response) => {
   }
 };
 
-export const getFieldConfiguration = async (req: Request, res: Response) => {
+export const getFieldConfiguration = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -682,7 +697,8 @@ export const getFieldConfiguration = async (req: Request, res: Response) => {
     });
 
     if (!configuration) {
-      return res.status(404).json({ error: 'Field configuration not found' });
+      res.status(404).json({ error: 'Field configuration not found' });
+      return;
     }
 
     res.json(configuration);
@@ -692,7 +708,7 @@ export const getFieldConfiguration = async (req: Request, res: Response) => {
   }
 };
 
-export const updateFieldConfiguration = async (req: Request, res: Response) => {
+export const updateFieldConfiguration = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -703,7 +719,8 @@ export const updateFieldConfiguration = async (req: Request, res: Response) => {
     });
 
     if (!configuration) {
-      return res.status(404).json({ error: 'Field configuration not found' });
+      res.status(404).json({ error: 'Field configuration not found' });
+      return;
     }
 
     const updatedConfiguration = await prisma.fieldConfiguration.update({
@@ -722,7 +739,7 @@ export const updateFieldConfiguration = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteFieldConfiguration = async (req: Request, res: Response) => {
+export const deleteFieldConfiguration = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -731,7 +748,8 @@ export const deleteFieldConfiguration = async (req: Request, res: Response) => {
     });
 
     if (!configuration) {
-      return res.status(404).json({ error: 'Field configuration not found' });
+      res.status(404).json({ error: 'Field configuration not found' });
+      return;
     }
 
     await prisma.fieldConfiguration.delete({
@@ -745,7 +763,7 @@ export const deleteFieldConfiguration = async (req: Request, res: Response) => {
   }
 };
 
-export const applyFieldConfiguration = async (req: Request, res: Response) => {
+export const applyFieldConfiguration = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const { deviceIds, options = {} } = req.body;
@@ -757,7 +775,8 @@ export const applyFieldConfiguration = async (req: Request, res: Response) => {
     });
 
     if (!configuration) {
-      return res.status(404).json({ error: 'Field configuration not found' });
+      res.status(404).json({ error: 'Field configuration not found' });
+      return;
     }
 
     // Validate devices exist
@@ -766,7 +785,8 @@ export const applyFieldConfiguration = async (req: Request, res: Response) => {
     });
 
     if (devices.length !== deviceIds.length) {
-      return res.status(400).json({ error: 'Some devices not found' });
+      res.status(400).json({ error: 'Some devices not found' });
+      return;
     }
 
     // Create configuration session
@@ -819,7 +839,7 @@ export const applyFieldConfiguration = async (req: Request, res: Response) => {
 };
 
 // Device Model Recognition
-export const detectDeviceModel = async (req: Request, res: Response) => {
+export const detectDeviceModel = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     
@@ -839,7 +859,8 @@ export const detectDeviceModel = async (req: Request, res: Response) => {
     });
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
 
     // Analyze device specifications

@@ -33,7 +33,7 @@ export const getAllCertificates = async (req: Request, res: Response) => {
   }
 };
 
-export const getCertificate = async (req: Request, res: Response) => {
+export const getCertificate = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -56,7 +56,8 @@ export const getCertificate = async (req: Request, res: Response) => {
     });
     
     if (!certificate) {
-      return res.status(404).json({ error: 'Certificate not found' });
+      res.status(404).json({ error: 'Certificate not found' });
+      return;
     }
 
     // Decrypt private key before returning
@@ -126,7 +127,7 @@ export const createCertificate = async (req: Request, res: Response) => {
   }
 };
 
-export const deployCertificate = async (req: Request, res: Response) => {
+export const deployCertificate = async (req: Request<{ certificateId: string }>, res: Response) => {
   try {
     const { certificateId } = req.params;
     const { deviceIds } = req.body;
@@ -136,11 +137,13 @@ export const deployCertificate = async (req: Request, res: Response) => {
     });
     
     if (!certificate) {
-      return res.status(404).json({ error: 'Certificate not found' });
+      res.status(404).json({ error: 'Certificate not found' });
+      return;
     }
     
     if (!certificate.isActive) {
-      return res.status(400).json({ error: 'Certificate is not active' });
+      res.status(400).json({ error: 'Certificate is not active' });
+      return;
     }
     
     const deployments = [];
@@ -198,7 +201,7 @@ export const deployCertificate = async (req: Request, res: Response) => {
   }
 };
 
-export const revokeCertificate = async (req: Request, res: Response) => {
+export const revokeCertificate = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -209,7 +212,8 @@ export const revokeCertificate = async (req: Request, res: Response) => {
     });
     
     if (!certificate) {
-      return res.status(404).json({ error: 'Certificate not found' });
+      res.status(404).json({ error: 'Certificate not found' });
+      return;
     }
     
     // Revoke certificate
@@ -246,7 +250,7 @@ export const revokeCertificate = async (req: Request, res: Response) => {
   }
 };
 
-export const getDeviceCertificates = async (req: Request, res: Response) => {
+export const getDeviceCertificates = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     
@@ -255,7 +259,8 @@ export const getDeviceCertificates = async (req: Request, res: Response) => {
     });
     
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
     
     const deviceCertificates = await prisma.deviceCertificate.findMany({

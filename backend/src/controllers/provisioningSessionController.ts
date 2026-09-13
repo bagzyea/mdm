@@ -87,7 +87,7 @@ export const getAllProvisioningSessions = async (req: Request, res: Response) =>
   }
 };
 
-export const getProvisioningSession = async (req: Request, res: Response) => {
+export const getProvisioningSession = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -122,7 +122,8 @@ export const getProvisioningSession = async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Provisioning session not found' });
+      res.status(404).json({ error: 'Provisioning session not found' });
+      return;
     }
 
     // Calculate session statistics
@@ -161,11 +162,13 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
     });
 
     if (!profile) {
-      return res.status(404).json({ error: 'Provisioning profile not found' });
+      res.status(404).json({ error: 'Provisioning profile not found' });
+      return;
     }
 
     if (!profile.isActive) {
-      return res.status(400).json({ error: 'Cannot create session for inactive profile' });
+      res.status(400).json({ error: 'Cannot create session for inactive profile' });
+      return;
     }
 
     // Validate devices exist and are compatible
@@ -179,10 +182,11 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
     if (devices.length !== data.deviceIds.length) {
       const foundIds = devices.map(d => d.id);
       const missingIds = data.deviceIds.filter(id => !foundIds.includes(id));
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Some devices not found or not eligible',
         details: { missingDevices: missingIds }
       });
+      return;
     }
 
     // Check device compatibility
@@ -194,7 +198,7 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
     });
 
     if (incompatibleDevices.length > 0) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Some devices are not compatible with this profile',
         details: {
           incompatibleDevices: incompatibleDevices.map(d => ({
@@ -205,6 +209,7 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
           }))
         }
       });
+      return;
     }
 
     // Create the session
@@ -256,7 +261,7 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
   }
 };
 
-export const startProvisioningSession = async (req: Request, res: Response) => {
+export const startProvisioningSession = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const options: StartProvisioningRequest['options'] = req.body.options || {};
@@ -279,14 +284,16 @@ export const startProvisioningSession = async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Provisioning session not found' });
+      res.status(404).json({ error: 'Provisioning session not found' });
+      return;
     }
 
     if (session.status !== 'PENDING' && session.status !== 'PAUSED') {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         error: 'Session cannot be started',
         details: `Current status: ${session.status}` 
       });
+      return;
     }
 
     // Update session status
@@ -320,7 +327,7 @@ export const startProvisioningSession = async (req: Request, res: Response) => {
   }
 };
 
-export const pauseProvisioningSession = async (req: Request, res: Response) => {
+export const pauseProvisioningSession = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -329,14 +336,16 @@ export const pauseProvisioningSession = async (req: Request, res: Response) => {
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Provisioning session not found' });
+      res.status(404).json({ error: 'Provisioning session not found' });
+      return;
     }
 
     if (session.status !== 'IN_PROGRESS') {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         error: 'Session cannot be paused',
         details: `Current status: ${session.status}` 
       });
+      return;
     }
 
     await prisma.provisioningSession.update({
@@ -358,7 +367,7 @@ export const pauseProvisioningSession = async (req: Request, res: Response) => {
   }
 };
 
-export const cancelProvisioningSession = async (req: Request, res: Response) => {
+export const cancelProvisioningSession = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -367,14 +376,16 @@ export const cancelProvisioningSession = async (req: Request, res: Response) => 
     });
 
     if (!session) {
-      return res.status(404).json({ error: 'Provisioning session not found' });
+      res.status(404).json({ error: 'Provisioning session not found' });
+      return;
     }
 
     if (!['PENDING', 'IN_PROGRESS', 'PAUSED'].includes(session.status)) {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         error: 'Session cannot be cancelled',
         details: `Current status: ${session.status}` 
       });
+      return;
     }
 
     await prisma.provisioningSession.update({
@@ -408,7 +419,7 @@ export const cancelProvisioningSession = async (req: Request, res: Response) => 
   }
 };
 
-export const updateProvisioningProgress = async (req: Request, res: Response) => {
+export const updateProvisioningProgress = async (req: Request<{ deviceId: string; sessionId: string }>, res: Response) => {
   try {
     const { sessionId, deviceId } = req.params;
     const update: ProvisioningStatusUpdate = req.body;
@@ -423,7 +434,8 @@ export const updateProvisioningProgress = async (req: Request, res: Response) =>
     });
 
     if (!progress) {
-      return res.status(404).json({ error: 'Provisioning progress not found' });
+      res.status(404).json({ error: 'Provisioning progress not found' });
+      return;
     }
 
     const updateData: any = {
@@ -480,7 +492,7 @@ export const updateProvisioningProgress = async (req: Request, res: Response) =>
 };
 
 // Device-initiated progress report (HTTP fallback for WebSocket)
-export const reportDeviceProvisioningProgress = async (req: Request, res: Response) => {
+export const reportDeviceProvisioningProgress = async (req: Request<{ sessionId: string }>, res: Response) => {
   try {
     const { sessionId } = req.params;
     const { deviceId, commandId, step, subStep, completedSteps, totalSteps, error } = req.body;
@@ -492,7 +504,8 @@ export const reportDeviceProvisioningProgress = async (req: Request, res: Respon
     });
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
 
     // Update ProvisioningProgress record
@@ -506,7 +519,8 @@ export const reportDeviceProvisioningProgress = async (req: Request, res: Respon
     });
 
     if (!progress) {
-      return res.status(404).json({ error: 'Provisioning session for this device not found' });
+      res.status(404).json({ error: 'Provisioning session for this device not found' });
+      return;
     }
 
     const updateData: any = {

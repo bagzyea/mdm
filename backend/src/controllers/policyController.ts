@@ -54,7 +54,7 @@ export const getAllPolicies = async (req: Request, res: Response) => {
 };
 
 // Get specific policy by ID
-export const getPolicyById = async (req: Request, res: Response) => {
+export const getPolicyById = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -76,7 +76,8 @@ export const getPolicyById = async (req: Request, res: Response) => {
     });
 
     if (!policy) {
-      return res.status(404).json({ error: 'Policy not found' });
+      res.status(404).json({ error: 'Policy not found' });
+      return;
     }
 
     res.json(policy);
@@ -94,7 +95,8 @@ export const createPolicy = async (req: Request, res: Response) => {
     // Validate policy rules based on type
     const validationError = validatePolicyRules(policyData.type, policyData.rules);
     if (validationError) {
-      return res.status(400).json({ error: validationError });
+      res.status(400).json({ error: validationError });
+      return;
     }
 
     // Create policy
@@ -126,7 +128,7 @@ export const createPolicy = async (req: Request, res: Response) => {
 };
 
 // Update existing policy
-export const updatePolicy = async (req: Request, res: Response) => {
+export const updatePolicy = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const updates: UpdatePolicyRequest = req.body;
@@ -134,14 +136,16 @@ export const updatePolicy = async (req: Request, res: Response) => {
     // Check if policy exists
     const existingPolicy = await prisma.policy.findUnique({ where: { id } });
     if (!existingPolicy) {
-      return res.status(404).json({ error: 'Policy not found' });
+      res.status(404).json({ error: 'Policy not found' });
+      return;
     }
 
     // Validate rules if provided
     if (updates.rules) {
       const validationError = validatePolicyRules(existingPolicy.type, updates.rules);
       if (validationError) {
-        return res.status(400).json({ error: validationError });
+        res.status(400).json({ error: validationError });
+        return;
       }
     }
 
@@ -177,7 +181,7 @@ export const updatePolicy = async (req: Request, res: Response) => {
 };
 
 // Delete policy
-export const deletePolicy = async (req: Request, res: Response) => {
+export const deletePolicy = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const { force = false } = req.query;
@@ -189,16 +193,18 @@ export const deletePolicy = async (req: Request, res: Response) => {
     });
 
     if (!policy) {
-      return res.status(404).json({ error: 'Policy not found' });
+      res.status(404).json({ error: 'Policy not found' });
+      return;
     }
 
     // Check if policy is assigned to devices
     if (policy.devices.length > 0 && !force) {
-      return res.status(409).json({
+      res.status(409).json({
         error: 'Policy is assigned to devices',
         message: 'Remove policy from all devices first or use force=true',
         assignedDevices: policy.devices.length
       });
+      return;
     }
 
     // Remove policy from devices if force delete
@@ -220,18 +226,20 @@ export const deletePolicy = async (req: Request, res: Response) => {
 };
 
 // Apply policy to specific devices
-export const applyPolicyToDevice = async (req: Request, res: Response) => {
+export const applyPolicyToDevice = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params; // policy ID
     const { deviceIds } = req.body;
 
     if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
-      return res.status(400).json({ error: 'Device IDs must be a non-empty array' });
+      res.status(400).json({ error: 'Device IDs must be a non-empty array' });
+      return;
     }
 
     const policy = await prisma.policy.findUnique({ where: { id } });
     if (!policy) {
-      return res.status(404).json({ error: 'Policy not found' });
+      res.status(404).json({ error: 'Policy not found' });
+      return;
     }
 
     const devices = await prisma.device.findMany({
@@ -239,7 +247,8 @@ export const applyPolicyToDevice = async (req: Request, res: Response) => {
     });
 
     if (devices.length !== deviceIds.length) {
-      return res.status(400).json({ error: 'Some device IDs are invalid' });
+      res.status(400).json({ error: 'Some device IDs are invalid' });
+      return;
     }
 
     // Connect policy to devices

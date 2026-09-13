@@ -79,11 +79,13 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
     });
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
 
     if (device.isRetired || device.retirement) {
-      return res.status(400).json({ error: 'Cannot transfer retired device' });
+      res.status(400).json({ error: 'Cannot transfer retired device' });
+      return;
     }
 
     // Check for pending transfers
@@ -95,10 +97,11 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
     });
 
     if (pendingTransfer) {
-      return res.status(409).json({ 
+      res.status(409).json({ 
         error: 'Device has pending transfer request',
         transferId: pendingTransfer.id 
       });
+      return;
     }
 
     // Create transfer request
@@ -148,20 +151,23 @@ export const requestDeviceTransfer = async (req: Request, res: Response) => {
 
     // TODO: Notify via WebSocket when available
 
-    return res.status(201).json(transfer);
+    res.status(201).json(transfer);
+    return;
   } catch (error) {
     console.error('Error requesting device transfer:', error);
-    return res.status(500).json({ error: 'Failed to request device transfer' });
+    res.status(500).json({ error: 'Failed to request device transfer' });
+    return;
   }
 };
 
 // Approve device transfer
-export const approveDeviceTransfer = async (req: Request, res: Response) => {
+export const approveDeviceTransfer = async (req: Request<{ transferId: string }>, res: Response) => {
   try {
     const { transferId } = req.params;
 
     if (!transferId) {
-      return res.status(400).json({ error: 'Transfer ID is required' });
+      res.status(400).json({ error: 'Transfer ID is required' });
+      return;
     }
 
     const { approved, approvalNotes } = req.body;
@@ -172,11 +178,13 @@ export const approveDeviceTransfer = async (req: Request, res: Response) => {
     });
 
     if (!transfer) {
-      return res.status(404).json({ error: 'Transfer request not found' });
+      res.status(404).json({ error: 'Transfer request not found' });
+      return;
     }
 
     if (transfer.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Transfer request already processed' });
+      res.status(400).json({ error: 'Transfer request already processed' });
+      return;
     }
 
     const newStatus = approved ? 'APPROVED' : 'REJECTED';
@@ -212,10 +220,12 @@ export const approveDeviceTransfer = async (req: Request, res: Response) => {
 
     // TODO: Notify via WebSocket when available
 
-    return res.json(updatedTransfer);
+    res.json(updatedTransfer);
+    return;
   } catch (error) {
     console.error('Error processing transfer approval:', error);
-    return res.status(500).json({ error: 'Failed to process transfer approval' });
+    res.status(500).json({ error: 'Failed to process transfer approval' });
+    return;
   }
 };
 
@@ -354,11 +364,13 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
     });
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found' });
+      return;
     }
 
     if (device.isRetired || device.retirement) {
-      return res.status(400).json({ error: 'Device already retired' });
+      res.status(400).json({ error: 'Device already retired' });
+      return;
     }
 
     // Create retirement record
@@ -409,20 +421,23 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
 
     // TODO: Notify via WebSocket when available
 
-    return res.status(201).json(retirement);
+    res.status(201).json(retirement);
+    return;
   } catch (error) {
     console.error('Error initiating device retirement:', error);
-    return res.status(500).json({ error: 'Failed to initiate device retirement' });
+    res.status(500).json({ error: 'Failed to initiate device retirement' });
+    return;
   }
 };
 
 // Update retirement status
-export const updateRetirementStatus = async (req: Request, res: Response) => {
+export const updateRetirementStatus = async (req: Request<{ retirementId: string }>, res: Response) => {
   try {
     const { retirementId } = req.params;
 
     if (!retirementId) {
-      return res.status(400).json({ error: 'Retirement ID is required' });
+      res.status(400).json({ error: 'Retirement ID is required' });
+      return;
     }
 
     const { status, notes, dataWipeCompleted, physicalReturnCompleted } = req.body;
@@ -433,7 +448,8 @@ export const updateRetirementStatus = async (req: Request, res: Response) => {
     });
 
     if (!retirement) {
-      return res.status(404).json({ error: 'Retirement record not found' });
+      res.status(404).json({ error: 'Retirement record not found' });
+      return;
     }
 
     const updateData: any = { status };
@@ -468,10 +484,12 @@ export const updateRetirementStatus = async (req: Request, res: Response) => {
 
     // TODO: Notify via WebSocket when available
 
-    return res.json(updatedRetirement);
+    res.json(updatedRetirement);
+    return;
   } catch (error) {
     console.error('Error updating retirement status:', error);
-    return res.status(500).json({ error: 'Failed to update retirement status' });
+    res.status(500).json({ error: 'Failed to update retirement status' });
+    return;
   }
 };
 

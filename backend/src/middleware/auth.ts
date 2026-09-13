@@ -16,10 +16,11 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Access token required',
         code: 'NO_TOKEN' 
       });
+      return;
     }
 
     const decoded = authService.verifyToken(token);
@@ -27,23 +28,26 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     // Verify user still exists and is active
     const user = await authService.getUserById(decoded.userId);
     if (!user || !user.isActive) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'User not found or inactive',
         code: 'INVALID_USER' 
       });
+      return;
     }
 
     req.user = decoded;
     next();
   } catch (error) {
     if (error instanceof Error) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         error: 'Invalid or expired token',
         code: 'INVALID_TOKEN',
         message: error.message 
       });
+      return;
     }
-    return res.status(500).json({ error: 'Authentication error' });
+    res.status(500).json({ error: 'Authentication error' });
+    return;
   }
 };
 
@@ -53,19 +57,21 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
   // guard when walking the Express layer stack.
   return function requireRoleMiddleware(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH' 
       });
+      return;
     }
 
     if (!allowedRoles.includes(req.user.role as UserRole)) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         error: 'Insufficient permissions',
         code: 'INSUFFICIENT_ROLE',
         required: allowedRoles,
         current: req.user.role
       });
+      return;
     }
 
     next();
@@ -78,20 +84,22 @@ export const requirePermission = (resource: string, action: string) => {
   // guard when walking the Express layer stack.
   return function requirePermissionMiddleware(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH' 
       });
+      return;
     }
 
     const hasPermission = authService.hasPermission(req.user.role as UserRole, resource, action);
     if (!hasPermission) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         error: 'Insufficient permissions',
         code: 'INSUFFICIENT_PERMISSION',
         required: { resource, action },
         role: req.user.role
       });
+      return;
     }
 
     next();
@@ -127,29 +135,32 @@ export const authenticateDevice = async (req: Request, res: Response, next: Next
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Device token required',
         code: 'NO_DEVICE_TOKEN' 
       });
+      return;
     }
 
     const decoded = authService.verifyToken(token);
     
     // Verify this is a device token
     if (decoded.role !== 'DEVICE') {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         error: 'Invalid device token',
         code: 'INVALID_DEVICE_TOKEN' 
       });
+      return;
     }
 
     req.user = decoded;
     next();
   } catch (error) {
-    return res.status(403).json({ 
+    res.status(403).json({ 
       error: 'Invalid or expired device token',
       code: 'INVALID_DEVICE_TOKEN' 
     });
+    return;
   }
 };
 
@@ -252,11 +263,12 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
   const contentLength = parseInt(req.get('Content-Length') || '0', 10);
   
   if (contentLength > maxSize) {
-    return res.status(413).json({
+    res.status(413).json({
       error: 'Request entity too large',
       code: 'ENTITY_TOO_LARGE',
       maxSize
     });
+    return;
   }
   
   next();
@@ -273,11 +285,12 @@ export const requireWhitelistedIP = (allowedIPs: string[] = []) => {
     }
     
     if (allowedIPs.length > 0 && !allowedIPs.includes(clientIP)) {
-      return res.status(403).json({
+      res.status(403).json({
         error: 'IP address not allowed',
         code: 'IP_NOT_ALLOWED',
         ip: clientIP
       });
+      return;
     }
     
     next();

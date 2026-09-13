@@ -22,11 +22,12 @@ export const validate = (schema: ObjectSchema) => {
         value: detail.context?.value
       }));
 
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Validation failed',
         errors: validationErrors
       });
+      return;
     }
 
     // Replace req.body with validated and sanitized data
@@ -50,11 +51,12 @@ export const validateParams = (schema: ObjectSchema) => {
         value: detail.context?.value
       }));
 
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Parameter validation failed',
         errors: validationErrors
       });
+      return;
     }
 
     req.params = value;
@@ -77,11 +79,12 @@ export const validateQuery = (schema: ObjectSchema) => {
         value: detail.context?.value
       }));
 
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Query validation failed',
         errors: validationErrors
       });
+      return;
     }
 
     req.query = value;

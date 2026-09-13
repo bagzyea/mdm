@@ -146,7 +146,7 @@ export const getCompatibleAPKs = async (req: Request, res: Response): Promise<vo
  * Downloads used to be served from an unauthenticated static mount. Callers now ask
  * for a link, which is valid only for that file and only for a short window.
  */
-export const getAPKDownloadUrl = async (req: Request, res: Response): Promise<void> => {
+export const getAPKDownloadUrl = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const apk = await prisma.aPKRegistry.findUnique({ where: { id: id as string } });
@@ -170,7 +170,7 @@ export const getAPKDownloadUrl = async (req: Request, res: Response): Promise<vo
   }
 };
 
-export const deleteAPK = async (req: Request, res: Response): Promise<void> => {
+export const deleteAPK = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const apk = await prisma.aPKRegistry.findUnique({ where: { id: id as string } });

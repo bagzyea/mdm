@@ -1,11 +1,20 @@
-export interface DeviceInfo {
-  deviceId: string;
-  manufacturer: string;
-  model: string;
-  androidVersion: string;
-  sdkVersion: number;
-  fingerprint: string;
-}
+/**
+ * The device wire contract lives in @mdm/shared-types (finding F-19).
+ *
+ * This file previously declared its own DeviceInfo with `androidVersion` / `sdkVersion`
+ * / `fingerprint`, while the enrollment controller read `osVersion` / `apiLevel` /
+ * `buildNumber` and the Android agent sent the latter. 98 of the backend's type errors
+ * traced to that drift. Re-exported here so existing imports keep working.
+ */
+export type {
+  DeviceInfo,
+  DeviceLocation,
+  NetworkInfo,
+  InstalledApp,
+  DeviceHeartbeatData,
+  DeviceStatusUpdate,
+  EnrollmentResponse,
+} from '@mdm/shared-types';
 
 export interface PolicyRule {
   type: string;

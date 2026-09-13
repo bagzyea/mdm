@@ -29,10 +29,11 @@ export const register = async (req: Request, res: Response) => {
     console.error('User registration error:', error);
     
     if (error instanceof Error) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: error.message,
         code: 'REGISTRATION_FAILED'
       });
+      return;
     }
     
     res.status(500).json({ 
@@ -69,10 +70,11 @@ export const login = async (req: Request, res: Response) => {
     console.error('Login error:', error);
     
     if (error instanceof Error) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: error.message,
         code: 'LOGIN_FAILED'
       });
+      return;
     }
     
     res.status(500).json({ 
@@ -91,10 +93,11 @@ export const refreshToken = async (req: Request, res: Response) => {
     const refreshToken = tokenFromBody || tokenFromCookie;
     
     if (!refreshToken) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Refresh token required',
         code: 'NO_REFRESH_TOKEN'
       });
+      return;
     }
 
     const tokens = await authService.refreshToken(refreshToken);
@@ -151,19 +154,21 @@ export const logout = async (req: Request, res: Response) => {
 export const getProfile = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH'
       });
+      return;
     }
 
     const user = await authService.getUserById(req.user.userId);
     
     if (!user) {
-      return res.status(404).json({ 
+      res.status(404).json({ 
         error: 'User not found',
         code: 'USER_NOT_FOUND'
       });
+      return;
     }
 
     res.json({ user });
@@ -180,10 +185,11 @@ export const getProfile = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH'
       });
+      return;
     }
 
     const { firstName, lastName, email } = req.body;
@@ -211,10 +217,11 @@ export const updateProfile = async (req: Request, res: Response) => {
 export const changePassword = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH'
       });
+      return;
     }
 
     const { currentPassword, newPassword } = req.body as ChangePasswordRequest;
@@ -226,10 +233,11 @@ export const changePassword = async (req: Request, res: Response) => {
     console.error('Change password error:', error);
     
     if (error instanceof Error) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: error.message,
         code: 'PASSWORD_CHANGE_FAILED'
       });
+      return;
     }
     
     res.status(500).json({ 
@@ -309,17 +317,18 @@ export const getUsers = async (req: Request, res: Response) => {
 };
 
 // Get user by ID (admin only)
-export const getUserById = async (req: Request, res: Response) => {
+export const getUserById = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     
     const user = await authService.getUserById(id);
     
     if (!user) {
-      return res.status(404).json({ 
+      res.status(404).json({ 
         error: 'User not found',
         code: 'USER_NOT_FOUND'
       });
+      return;
     }
 
     res.json({ user });
@@ -333,17 +342,18 @@ export const getUserById = async (req: Request, res: Response) => {
 };
 
 // Update user (admin only)
-export const updateUser = async (req: Request, res: Response) => {
+export const updateUser = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const updates = req.body;
     const updatedBy = req.user?.userId;
 
     if (!updatedBy) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH'
       });
+      return;
     }
 
     const updatedUser = await authService.updateUser(id, updates, updatedBy);
@@ -362,16 +372,17 @@ export const updateUser = async (req: Request, res: Response) => {
 };
 
 // Delete user (admin only)
-export const deleteUser = async (req: Request, res: Response) => {
+export const deleteUser = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const deletedBy = req.user?.userId;
 
     if (!deletedBy) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         error: 'Authentication required',
         code: 'NO_AUTH'
       });
+      return;
     }
 
     await authService.deleteUser(id, deletedBy);
@@ -387,7 +398,7 @@ export const deleteUser = async (req: Request, res: Response) => {
 };
 
 // Get user audit log
-export const getUserAuditLog = async (req: Request, res: Response) => {
+export const getUserAuditLog = async (req: Request<{ id: string }>, res: Response) => {
   try {
     const { id } = req.params;
     const { limit = 50 } = req.query;
@@ -408,10 +419,11 @@ export const getUserAuditLog = async (req: Request, res: Response) => {
 export const validateToken = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({ 
+      res.status(401).json({ 
         valid: false,
         error: 'Invalid token'
       });
+      return;
     }
 
     res.json({

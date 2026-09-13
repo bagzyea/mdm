@@ -66,7 +66,7 @@ export const getAllCommands = async (req: Request, res: Response): Promise<void>
   }
 };
 
-export const getCommandById = async (req: Request, res: Response): Promise<void> => {
+export const getCommandById = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     
@@ -198,7 +198,7 @@ export const createCommand = async (req: Request, res: Response): Promise<void> 
 };
 
 // Update command result (called by device)
-export const updateCommandResult = async (req: Request, res: Response): Promise<void> => {
+export const updateCommandResult = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     const { result, status } = req.body;
@@ -246,7 +246,7 @@ export const updateCommandResult = async (req: Request, res: Response): Promise<
 };
 
 // Cancel pending command
-export const cancelCommand = async (req: Request, res: Response): Promise<void> => {
+export const cancelCommand = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     
