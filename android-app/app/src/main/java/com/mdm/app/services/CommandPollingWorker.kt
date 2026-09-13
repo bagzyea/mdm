@@ -91,30 +91,36 @@ class CommandPollingWorker(
                 if (commands != null && commands.isNotEmpty()) {
                     Log.i(TAG, "Found ${commands.size} pending commands. Processing...")
                     
-                    // Route commands to MDMService's handling logic by simulating a WebSocket payload
-                    val mdmService = MDMService(applicationContext)
-                    
+                    // Commands fetched here used to be reconstructed and then thrown
+                    // away — the original comment said the handler could not be reached
+                    // from a worker because it lived in MainActivity. So the periodic
+                    // poll and the FCM wake both did nothing, which matters most in
+                    // exactly the conditions they exist for: a tablet that has been out
+                    // of coverage and is briefly back online.
+                    //
+                    // CommandExecutor is Activity-independent (finding F-09), so they can
+                    // now actually be executed. Prefer the running service's executor so
+                    // state is shared; fall back to a standalone one if the service is
+                    // not up.
+                    val executor = MDMBackgroundService.commandExecutor()
+                        ?: CommandExecutor(
+                            applicationContext,
+                            MDMService(applicationContext),
+                            PreferenceManager.getInstance(applicationContext)
+                        )
+
                     for (cmdObject in commands) {
                         try {
-                            // Translate API response to expected JSON format for handleServerCommand
-                            // The backend returns an array of RemoteCommand objects
-                            val cmdStr = cmdObject.toString()
-                            val json = JSONObject(cmdStr)
-                            
+                            val json = JSONObject(cmdObject.toString())
+
                             val reconstructedCmd = JSONObject().apply {
                                 put("commandType", json.optString("command", ""))
                                 put("commandId", json.optString("id", ""))
                                 put("payload", json.optJSONObject("parameters"))
                             }
-                            
-                            // Send to MDM Service logic
-                            // In a full refactor we would extract the command handler from MainActivity,
-                            // but currently MainActivity or MDMService processes it. 
-                            Log.d(TAG, "Processing command via worker: ${reconstructedCmd.toString()}")
 
-                            // For now, if we cannot cleanly invoke MainActivity's handler here,
-                            // we send a broadcast indicating pending commands to wake the UI
-                            // However, the standard allows executing devicePolicyManager directly here.
+                            Log.d(TAG, "Executing polled command: ${reconstructedCmd.optString("commandType")}")
+                            executor.handle(reconstructedCmd)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error executing specific command from poll", e)
                         }

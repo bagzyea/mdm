@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import com.mdm.app.MainActivity
 import com.mdm.app.R
 import com.mdm.app.utils.PreferenceManager
+import com.mdm.app.websocket.CommandListener
 import kotlinx.coroutines.*
 
 /**
@@ -25,9 +26,19 @@ class MDMBackgroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "mdm_service_channel"
         private const val NOTIFICATION_CHANNEL_NAME = "MDM Background Service"
+
+        /**
+         * The running service, so a resumed Activity can lend it the few operations that
+         * genuinely require one (startLockTask). Null whenever the service is not up.
+         */
+        @Volatile
+        private var instance: MDMBackgroundService? = null
+
+        fun commandExecutor(): CommandExecutor? = instance?.commandExecutor
     }
     
     private lateinit var mdmService: MDMService
+    private lateinit var commandExecutor: CommandExecutor
     private lateinit var preferenceManager: PreferenceManager
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
@@ -39,7 +50,19 @@ class MDMBackgroundService : Service() {
         
         preferenceManager = PreferenceManager.getInstance(this)
         mdmService = MDMService(this)
-        
+
+        // Commands are executed here, in the foreground service, not in the Activity
+        // (finding F-09). MainActivity used to register itself as the CommandListener, so
+        // lock, kiosk and policy commands only ran while the app was on screen — which,
+        // for a tablet mid-interview or asleep in a bag, is almost never.
+        commandExecutor = CommandExecutor(this, mdmService, preferenceManager)
+        mdmService.setCommandListener(object : CommandListener {
+            override fun onServerCommand(command: org.json.JSONObject) {
+                commandExecutor.handle(command)
+            }
+        })
+        instance = this
+
         createNotificationChannel()
     }
     
@@ -72,6 +95,8 @@ class MDMBackgroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     
     override fun onDestroy() {
+        instance = null
+        mdmService.setCommandListener(null)
         super.onDestroy()
         Log.i(TAG, "MDM Background Service destroyed")
         

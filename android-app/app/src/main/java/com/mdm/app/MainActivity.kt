@@ -21,6 +21,8 @@ import android.widget.EditText
 import com.mdm.app.admin.MDMDeviceAdminReceiver
 import com.mdm.app.config.AppConfig
 import com.mdm.app.services.MDMService
+import com.mdm.app.services.MDMBackgroundService
+import com.mdm.app.services.CommandExecutor
 import com.mdm.app.utils.PreferenceManager
 import com.mdm.app.websocket.CommandListener
 import com.mdm.app.databinding.ActivityMainBinding
@@ -107,12 +109,47 @@ class MainActivity : AppCompatActivity() {
         deviceAdminComponent = ComponentName(this, MDMDeviceAdminReceiver::class.java)
         policyEngine = PolicyEngine(this)
 
-        // Register as the CommandListener so WebSocket commands reach handleServerCommand()
-        mdmService.setCommandListener(object : CommandListener {
-            override fun onServerCommand(command: JSONObject) {
-                handleServerCommand(command)
-            }
-        })
+        // Commands are no longer handled here (finding F-09). MDMBackgroundService owns a
+        // CommandExecutor, so lock, kiosk and policy commands run whether or not this
+        // Activity exists. The Activity only lends the service the two operations that
+        // genuinely require a resumed Activity — startLockTask and stopLockTask.
+    }
+
+    /**
+     * Lend the foreground service the Activity-bound operations while we are resumed.
+     *
+     * `startLockTask()` is an Activity method the platform will only honour for a resumed
+     * Activity; there is no service-side equivalent. Everything else the executor does
+     * itself.
+     */
+    private val lockTaskActions = object : CommandExecutor.ActivityActions {
+        override fun startLockTask(): Boolean = try {
+            this@MainActivity.startLockTask()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "startLockTask failed", e)
+            false
+        }
+
+        override fun stopLockTask(): Boolean = try {
+            this@MainActivity.stopLockTask()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "stopLockTask failed", e)
+            false
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        MDMBackgroundService.commandExecutor()?.setActivityActions(lockTaskActions)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // The platform will not honour lock-task calls once we are not resumed, so the
+        // executor must stop believing it can make them.
+        MDMBackgroundService.commandExecutor()?.setActivityActions(null)
     }
     
     private fun setupUI() {
@@ -356,269 +393,11 @@ class MainActivity : AppCompatActivity() {
     // REMOVED DANGEROUS KIOSK FUNCTIONS FOR SECURITY:
     // - enableKiosk() - now server-controlled only to prevent accidental lockouts
     // - disableKiosk() - now server-controlled only for consistency
-    // These functions are replaced by server command handlers below
-    
-    // Server-initiated kiosk enable (replaces user enableKiosk)
-    private suspend fun executeServerKioskEnable(payload: org.json.JSONObject?) {
-        if (devicePolicyManager.isAdminActive(deviceAdminComponent)) {
-            val allowedPackages = payload?.optJSONArray("allowedPackages")?.let { 
-                (0 until it.length()).map { i -> it.getString(i) }.toTypedArray()
-            } ?: arrayOf(packageName)
-            
-            devicePolicyManager.setLockTaskPackages(deviceAdminComponent, allowedPackages)
-            startLockTask()
-            preferenceManager.setKioskModeEnabled(true)
-            updateStatus("Kiosk mode enabled by administrator", StatusType.INFO)
-            
-            // Notify server of successful activation
-            if (mdmService.isWebSocketConnected()) {
-                val kioskData = mapOf(
-                    "type" to "kiosk_mode_changed",
-                    "enabled" to true,
-                    "timestamp" to System.currentTimeMillis()
-                )
-                mdmService.sendTestMessage(kioskData)
-            }
-        } else {
-            throw Exception("Device admin not active")
-        }
-    }
-    
-    // Server-initiated kiosk disable (replaces user disableKiosk)
-    private suspend fun executeServerKioskDisable() {
-        if (devicePolicyManager.isAdminActive(deviceAdminComponent)) {
-            devicePolicyManager.setLockTaskPackages(deviceAdminComponent, arrayOf())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                stopLockTask()
-            }
-            preferenceManager.setKioskModeEnabled(false)
-            updateStatus("Kiosk mode disabled by administrator", StatusType.INFO)
-            
-            // Notify server of successful deactivation
-            if (mdmService.isWebSocketConnected()) {
-                val kioskData = mapOf(
-                    "type" to "kiosk_mode_changed",
-                    "enabled" to false,
-                    "timestamp" to System.currentTimeMillis()
-                )
-                mdmService.sendTestMessage(kioskData)
-            }
-        } else {
-            throw Exception("Device admin not active")
-        }
-    }
-    
-    // Server-initiated device lock (replaces user lockDevice)
-    private suspend fun executeServerLockDevice(payload: org.json.JSONObject?) {
-        if (devicePolicyManager.isAdminActive(deviceAdminComponent)) {
-            val message = payload?.optString("message") ?: "Device locked by administrator"
-            devicePolicyManager.lockNow()
-            showSnackbar(message)
-        } else {
-            throw Exception("Device admin not active")
-        }
-    }
-    
-    // Server-initiated service restart (replaces user start/stop services)
-    private suspend fun executeServerRestartServices() {
-        try {
-            mdmService.stopServices()
-            delay(1000) // Brief pause between stop and start
-            mdmService.startServices()
-            updateStatus("MDM services restarted by administrator", StatusType.SUCCESS)
-        } catch (e: Exception) {
-            throw Exception("Failed to restart services: ${e.message}")
-        }
-    }
-
-    // Server-initiated device unlock.
-    //
-    // This previously called lockNow() — the exact opposite of what it reported — and
-    // then told the dashboard the device had been unlocked (finding F-10).
-    //
-    // Disabling the keyguard requires Device Owner privilege; isAdminActive() does not
-    // imply it. Until the app is provisioned as Device Owner (finding F-07), this
-    // reports an honest failure rather than silently doing nothing or the opposite.
-    private suspend fun executeServerUnlockDevice(payload: org.json.JSONObject?) {
-        if (!devicePolicyManager.isDeviceOwnerApp(packageName)) {
-            throw Exception(
-                "UNLOCK_DEVICE requires Device Owner privilege; this app is not the device owner"
-            )
-        }
-
-        try {
-            val disabled = devicePolicyManager.setKeyguardDisabled(deviceAdminComponent, true)
-            if (!disabled) {
-                throw Exception(
-                    "The platform refused to disable the keyguard; a secure lock screen is set"
-                )
-            }
-            updateStatus("Device keyguard disabled by administrator", StatusType.SUCCESS)
-        } catch (e: SecurityException) {
-            throw Exception("Not permitted to disable the keyguard: ${e.message}")
-        }
-    }
-
-    // Server-initiated device info retrieval
-    private suspend fun executeServerGetDeviceInfo() {
-        try {
-            val deviceInfo = mdmService.getDeviceInfo()
-            updateStatus("Device info retrieved: $deviceInfo", StatusType.SUCCESS)
-            showSnackbar("Device info: $deviceInfo")
-        } catch (e: Exception) {
-            throw Exception("Failed to get device info: ${e.message}")
-        }
-    }
-
-    // Server-initiated device location request.
-    //
-    // This previously updated a status string and returned, collecting no location and
-    // sending no result, while the dashboard recorded the command as executed
-    // (finding F-10). It now resolves an actual fix and returns it as the command
-    // result — so the caller must not send the generic result for this command.
-    private suspend fun executeServerLocateDevice(
-        payload: org.json.JSONObject?,
-        commandId: String
-    ) {
-        val enableHighAccuracy = payload?.optBoolean("enableHighAccuracy") ?: false
-        updateStatus("Locating device...", StatusType.INFO)
-
-        try {
-            val fix = com.mdm.app.utils.LocationResolver.resolve(
-                context = this,
-                highAccuracy = enableHighAccuracy
-            )
-
-            updateStatus(
-                "Location reported: ${fix.latitude}, ${fix.longitude}",
-                StatusType.SUCCESS
-            )
-            sendCommandResult(commandId, true, fix.toMap())
-        } catch (e: Exception) {
-            updateStatus("Unable to locate device: ${e.message}", StatusType.ERROR)
-            sendCommandResult(commandId, false, null, e.message ?: "Location unavailable")
-        }
-    }
-
-    // Server-initiated settings synchronization
-    private suspend fun executeServerSyncSettings() {
-        try {
-            mdmService.updatePolicies()
-            applyEnforcedPolicies()
-            updateStatus("Settings synchronized by administrator", StatusType.SUCCESS)
-            showSnackbar("Device settings synced")
-        } catch (e: Exception) {
-            throw Exception("Failed to sync settings: ${e.message}")
-        }
-    }
-
-    // Over-the-Air (OTA) Device Provisioning
-    private suspend fun executeProvisioning(payload: JSONObject?, commandId: String) {
-        try {
-            if (payload == null) {
-                throw Exception("Provisioning payload is null")
-            }
-
-            updateStatus("Starting device provisioning...", StatusType.INFO)
-            Log.d(TAG, "Provisioning payload: $payload")
-
-            // Create and execute provisioning executor
-            val executor = com.mdm.app.services.DeviceProvisioningExecutor(
-                this,
-                mdmService,
-                preferenceManager
-            )
-
-            // Run provisioning in IO context
-            executor.executeProvisioning(payload, commandId)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Provisioning failed", e)
-            updateStatus("Provisioning failed: ${e.message}", StatusType.ERROR)
-            sendCommandResult(commandId, false, null, "Provisioning failed: ${e.message}")
-        }
-    }
-
-    // Server command handler - processes commands received via WebSocket
-    private fun handleServerCommand(command: JSONObject) {
-        val commandType = command.getString("commandType")
-        val commandId = command.getString("commandId")
-        val payload = command.optJSONObject("payload")
-
-        Log.d(TAG, "handleServerCommand: type=$commandType, id=$commandId, payload=$payload")
-
-        lifecycleScope.launch {
-            try {
-                when (commandType) {
-                    // Support both uppercase (from backend) and lowercase (legacy) formats
-                    "ENABLE_KIOSK", "enable_kiosk" -> executeServerKioskEnable(payload)
-                    "DISABLE_KIOSK", "disable_kiosk" -> executeServerKioskDisable()
-                    "LOCK_DEVICE", "lock_device" -> {
-                        Log.d(TAG, "Executing LOCK_DEVICE command")
-                        executeServerLockDevice(payload)
-                    }
-                    "UNLOCK_DEVICE", "unlock_device" -> {
-                        Log.d(TAG, "Executing UNLOCK_DEVICE command")
-                        executeServerUnlockDevice(payload)
-                    }
-                    "GET_DEVICE_INFO", "get_device_info" -> {
-                        Log.d(TAG, "Executing GET_DEVICE_INFO command")
-                        executeServerGetDeviceInfo()
-                    }
-                    "LOCATE_DEVICE", "locate_device" -> {
-                        Log.d(TAG, "Executing LOCATE_DEVICE command")
-                        // Sends its own result carrying the location fix.
-                        executeServerLocateDevice(payload, commandId)
-                        return@launch
-                    }
-                    "APPLY_POLICY", "apply_policy", "UPDATE_POLICY", "update_policy", "REMOVE_POLICY", "remove_policy" -> {
-                        Log.d(TAG, "Executing POLICY modification command")
-                        mdmService.updatePolicies()
-                        applyEnforcedPolicies()
-                    }
-                    "SYNC_SETTINGS", "sync_settings" -> {
-                        Log.d(TAG, "Executing SYNC_SETTINGS command")
-                        executeServerSyncSettings()
-                    }
-                    "RESTART_SERVICES", "restart_services" -> executeServerRestartServices()
-                    "PROVISION_DEVICE", "provision_device" -> {
-                        Log.d(TAG, "Executing PROVISION_DEVICE command")
-                        executeProvisioning(payload, commandId)
-                        return@launch  // Don't send generic result, provisioning sends its own progress
-                    }
-                    else -> {
-                        Log.w(TAG, "Unknown command type: $commandType")
-                        sendCommandResult(commandId, false, null, "Unknown command type: $commandType")
-                        return@launch
-                    }
-                }
-
-                Log.d(TAG, "Command executed successfully, sending result")
-                sendCommandResult(commandId, true, mapOf("executed" to true))
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Command execution failed", e)
-                sendCommandResult(commandId, false, null, e.message)
-            }
-        }
-    }
-    
-    // Send command result back to server
-    private fun sendCommandResult(commandId: String, success: Boolean, result: Any? = null, error: String? = null) {
-        if (mdmService.isWebSocketConnected()) {
-            val deviceId = PreferenceManager.getInstance(this).getDeviceId()
-            val resultData = mapOf(
-                "type" to "command_result",
-                "deviceId" to deviceId,
-                "commandId" to commandId,
-                "success" to success,
-                "result" to result,
-                "error" to error,
-                "timestamp" to System.currentTimeMillis()
-            )
-            mdmService.sendTestMessage(resultData)
-        }
-    }
+    // Server command execution lives in MDMBackgroundService via CommandExecutor
+    // (finding F-09). It used to live here, which meant lock, kiosk and policy
+    // commands only ran while this Activity was foregrounded — on a census tablet
+    // that is almost never. This Activity now only lends the executor startLockTask
+    // and stopLockTask, which the platform will not honour from a service.
     
     private fun checkPendingCommands() {
         showProgress(true)
