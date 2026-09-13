@@ -9,12 +9,18 @@
 export type {
   DeviceInfo,
   DeviceLocation,
-  NetworkInfo,
   InstalledApp,
   DeviceHeartbeatData,
   DeviceStatusUpdate,
   EnrollmentResponse,
 } from '@mdm/shared-types';
+
+/**
+ * The wire-level network block an agent reports inside DeviceInfo. Deliberately not
+ * re-exported as `NetworkInfo`: this file already declares a richer NetworkInfo used by
+ * the monitoring code, and the two are different shapes.
+ */
+export type { NetworkInfo as DeviceNetworkInfo } from '@mdm/shared-types';
 
 export interface PolicyRule {
   type: string;

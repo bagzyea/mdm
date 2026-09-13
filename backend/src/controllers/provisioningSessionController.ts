@@ -6,6 +6,7 @@ import {
   ProvisioningStatusUpdate
 } from '../types';
 import { provisioningService } from '../services/provisioningService';
+import { definedOnly } from '../utils/prisma';
 
 const prisma = new PrismaClient();
 
@@ -217,7 +218,9 @@ export const createProvisioningSession = async (req: Request, res: Response) => 
       data: {
         profileId: data.profileId,
         name: data.name,
-        description: data.description,
+        // Omitted rather than set to undefined: exactOptionalPropertyTypes treats an
+        // explicitly-undefined optional property as different from an absent one.
+        ...(data.description !== undefined ? { description: data.description } : {}),
         deviceIds: data.deviceIds,
         totalDevices: data.deviceIds.length,
         createdBy: userId!,
@@ -475,10 +478,10 @@ export const updateProvisioningProgress = async (req: Request<{ deviceId: string
     // Update device provisioning status
     await prisma.device.update({
       where: { id: deviceId },
-      data: {
+      data: definedOnly({
         provisioningStatus: update.status,
         lastProvisionedAt: ['COMPLETED'].includes(update.status) ? new Date() : undefined
-      }
+      })
     });
 
     // Update session counters
@@ -565,10 +568,10 @@ export const reportDeviceProvisioningProgress = async (req: Request<{ sessionId:
     // Update device provisioning status
     await prisma.device.update({
       where: { id: device.id },
-      data: {
+      data: definedOnly({
         provisioningStatus: (step as any) || 'PENDING',
         lastProvisionedAt: step === 'COMPLETED' ? new Date() : undefined
-      }
+      })
     });
 
     // Update session counters if completed or failed
@@ -696,11 +699,11 @@ async function updateSessionCounters(sessionId: string) {
 
   await prisma.provisioningSession.update({
     where: { id: sessionId },
-    data: {
+    data: definedOnly({
       completedDevices: completedCount,
       failedDevices: failedCount,
       status: sessionStatus as any,
       completedAt: sessionStatus !== 'IN_PROGRESS' ? new Date() : undefined
-    }
+    })
   });
 }

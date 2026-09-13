@@ -6,6 +6,7 @@ import {
   ProvisioningSecurityConfig
 } from '../types';
 import { getCommandService } from './commandServiceInstance';
+import { definedOnly } from '../utils/prisma';
 import { signStoredApkReference } from './signedDownloads';
 import { CommandType } from '../types/commands';
 
@@ -570,6 +571,7 @@ export class ProvisioningService {
         const configKeys = Object.keys(configuration.configurations);
         for (let i = 0; i < configKeys.length; i++) {
           const configKey = configKeys[i];
+          if (configKey === undefined) continue;
           const configValue = configuration.configurations[configKey];
 
           await this.updateProgress(sessionId, device.id, 'CONFIGURING_NETWORK', {
@@ -817,10 +819,10 @@ export class ProvisioningService {
       // Update device provisioning status
       await prisma.device.update({
         where: { id: deviceId },
-        data: {
+        data: definedOnly({
           provisioningStatus: status,
           lastProvisionedAt: status === 'COMPLETED' ? new Date() : undefined
-        }
+        })
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

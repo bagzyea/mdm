@@ -89,7 +89,7 @@ export class EnhancedProvisioningService {
               {
                 retryAttempts,
                 skipValidation,
-                deviceLocation: deviceLocation,
+                ...(deviceLocation !== undefined ? { deviceLocation } : {}),
                 installationTimeout
               }
             ).catch(error => {
@@ -393,7 +393,9 @@ export class EnhancedProvisioningService {
           {
             availableStorage: device.availableStorage || 0,
             model: device.model,
-            district: deviceLocation?.district
+            ...(deviceLocation?.district !== undefined
+              ? { district: deviceLocation.district }
+              : {}),
           }
         );
 

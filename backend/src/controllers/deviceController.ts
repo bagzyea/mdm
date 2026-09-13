@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
 import { redactSensitive } from '../utils/redact';
+import { toJson, isPrismaError, errorMessage, definedOnly } from '../utils/prisma';
 import {
   consumeEnrollmentToken,
   createEnrollmentToken,
@@ -43,8 +44,11 @@ export const getAllDevices = async (req: Request, res: Response) => {
     // Get devices with pagination
     const devices = await prisma.device.findMany({
       where,
-      skip: limit === 100 ? 0 : skip, // Skip pagination if limit is 100 (dashboard overview)
-      take: limit === 100 ? undefined : limit,
+      // Limit 100 is the dashboard overview, which wants the whole page and no LIMIT
+      // clause. `take: undefined` is not the same as an absent `take` under
+      // exactOptionalPropertyTypes, so the key is omitted rather than set to undefined.
+      skip: limit === 100 ? 0 : skip,
+      ...(limit === 100 ? {} : { take: limit }),
       include: {
         policies: true,
         commands: {
@@ -168,7 +172,7 @@ export const enrollDevice = async (req: Request, res: Response) => {
       // Update existing device instead of returning error
       const updatedDevice = await prisma.device.update({
         where: { deviceId: deviceInfo.deviceId },
-        data: {
+        data: definedOnly({
           manufacturer: deviceInfo.manufacturer,
           model: deviceInfo.model,
           androidVersion: deviceInfo.osVersion,
@@ -183,12 +187,12 @@ export const enrollDevice = async (req: Request, res: Response) => {
           totalRAM: deviceInfo.ramTotal ? BigInt(deviceInfo.ramTotal) : null,
           availableRAM: deviceInfo.ramTotal && deviceInfo.ramUsed 
             ? BigInt(deviceInfo.ramTotal - deviceInfo.ramUsed) : null,
-          networkInfo: deviceInfo.networkInfo || null,
-          location: deviceInfo.location || null,
+          networkInfo: toJson(deviceInfo.networkInfo),
+          location: toJson(deviceInfo.location),
           assignedTo: organizationId,
           lastSeen: new Date(),
           updatedAt: new Date()
-        }
+        })
       });
       
       // Issuing credentials revokes any the device already held, so a stolen
@@ -213,7 +217,7 @@ export const enrollDevice = async (req: Request, res: Response) => {
     }
     
     const device = await prisma.device.create({
-      data: {
+      data: definedOnly({
         deviceId: deviceInfo.deviceId,
         manufacturer: deviceInfo.manufacturer,
         model: deviceInfo.model,
@@ -229,10 +233,10 @@ export const enrollDevice = async (req: Request, res: Response) => {
         totalRAM: deviceInfo.ramTotal ? BigInt(deviceInfo.ramTotal) : null,
         availableRAM: deviceInfo.ramTotal && deviceInfo.ramUsed 
           ? BigInt(deviceInfo.ramTotal - deviceInfo.ramUsed) : null,
-        networkInfo: deviceInfo.networkInfo || null,
-        location: deviceInfo.location || null,
+        networkInfo: toJson(deviceInfo.networkInfo),
+        location: toJson(deviceInfo.location),
         assignedTo: organizationId
-      }
+      })
     });
     
     const credentials = await issueDeviceCredentials(device.deviceId);
@@ -265,9 +269,9 @@ export const enrollDevice = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error enrolling device:', error);
-    
+
     // Check if it's a Prisma constraint error
-    if (error.code === 'P2002') {
+    if (isPrismaError(error) && error.code === 'P2002') {
       res.status(409).json({ 
         success: false,
         error: 'Device with this ID or fingerprint already exists' 
@@ -277,7 +281,7 @@ export const enrollDevice = async (req: Request, res: Response) => {
     
     res.status(500).json({ 
       success: false,
-      error: 'Failed to enroll device: ' + (error.message || 'Unknown error')
+      error: 'Failed to enroll device: ' + errorMessage(error)
     });
   }
 };
@@ -389,12 +393,12 @@ export const sendCommand = async (req: Request<{ deviceId: string }>, res: Respo
     }
     
     const command = await prisma.remoteCommand.create({
-      data: {
+      data: definedOnly({
         deviceId: device.id,
         command: commandPayload.command,
         parameters: commandPayload.parameters,
         status: 'PENDING'
-      }
+      })
     });
     
     // Log command event

@@ -4,6 +4,7 @@ import { CertificateRequest, Certificate, DeviceCertificate } from '../types';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { cryptoService } from '../services/cryptoService';
+import { definedOnly } from '../utils/prisma';
 
 const prisma = new PrismaClient();
 
@@ -91,7 +92,7 @@ export const createCertificate = async (req: Request, res: Response) => {
 
     // Store in database
     const newCertificate = await prisma.certificate.create({
-      data: {
+      data: definedOnly({
         name: certificateRequest.name,
         description: certificateRequest.description,
         type: certificateRequest.type,
@@ -102,7 +103,7 @@ export const createCertificate = async (req: Request, res: Response) => {
         validFrom: certificate.validFrom,
         validTo: certificate.validTo,
         createdBy: userId
-      }
+      })
     });
     
     // Log certificate creation

@@ -296,10 +296,8 @@ export class DataFolderService {
 
     // Group by folder type
     const groupedFolders = compatibleFolders.reduce((acc, folder) => {
-      if (!acc[folder.folderType]) {
-        acc[folder.folderType] = [];
-      }
-      acc[folder.folderType].push(folder);
+      const bucket = acc[folder.folderType] ?? (acc[folder.folderType] = []);
+      bucket.push(folder);
       return acc;
     }, {} as Record<string, any[]>);
 

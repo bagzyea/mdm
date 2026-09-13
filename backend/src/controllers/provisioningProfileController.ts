@@ -4,6 +4,7 @@ import {
   CreateProvisioningProfileRequest
 } from '../types';
 import { ProvisioningService } from '../services/provisioningService';
+import { definedOnly } from '../utils/prisma';
 
 const prisma = new PrismaClient();
 
@@ -116,14 +117,15 @@ export const createProvisioningProfile = async (req: Request, res: Response) => 
     const profile = await prisma.provisioningProfile.create({
       data: {
         name: data.name,
-        description: data.description,
+        // Omitted rather than set to undefined — see exactOptionalPropertyTypes.
+        ...(data.description !== undefined ? { description: data.description } : {}),
         deviceModels: data.deviceModels,
         networkConfig: data.networkConfig as any,
         securityConfig: data.securityConfig as any,
         geographicRules: data.geographicRules as any,
         createdBy: userId || 'system',
         applications: {
-          create: data.applications.map((app, index) => ({
+          create: data.applications.map((app, index) => definedOnly({
             packageName: app.packageName,
             appName: app.appName,
             version: app.version,
@@ -135,7 +137,7 @@ export const createProvisioningProfile = async (req: Request, res: Response) => 
           }))
         },
         filePackages: {
-          create: data.filePackages.map(pkg => ({
+          create: data.filePackages.map(pkg => definedOnly({
             name: pkg.name,
             description: pkg.description,
             fileType: pkg.fileType,

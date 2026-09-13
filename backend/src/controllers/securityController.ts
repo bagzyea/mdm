@@ -422,7 +422,7 @@ async function performPatchLevelCheck(deviceId: string) {
   const recommendations = [];
   
   if (device?.androidVersion) {
-    const version = parseInt(device.androidVersion.split('.')[0]);
+    const version = parseInt(device.androidVersion.split('.')[0] ?? '0', 10);
     if (version < 11) {
       violations.push('Android version below minimum requirement (11)');
       recommendations.push('Update Android to version 11 or higher');

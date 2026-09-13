@@ -54,6 +54,9 @@ function applyData(row: any, data: any): void {
 }
 
 jest.mock('@prisma/client', () => ({
+  // Keep the real Prisma namespace: Prisma.DbNull and friends are sentinel values the
+  // code compares against, so faking them would change behaviour rather than isolate it.
+  ...jest.requireActual('@prisma/client'),
   PrismaClient: jest.fn().mockImplementation(() => ({
     device: {
       findUnique: jest.fn(async ({ where }: any) =>
