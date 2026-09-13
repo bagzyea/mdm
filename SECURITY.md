@@ -7,9 +7,13 @@ compliance that did not hold — one stated "Comply with NIST SP 800-124 | ✅ Y
 compliance" while the enrollment endpoint accepted any device identity presented to it
 and the JWT signing key fell back to a literal committed in this repository.
 
-**The rule this document follows: a control is only listed as in place if something in
-CI fails when it is removed.** Everything else is listed as open, with the finding
-number from the September 2026 readiness review.
+**The rule this document follows: a control is only listed as in place if something in CI
+fails when it is removed.** Everything else is listed as open, with the finding number
+from the September 2026 readiness review.
+
+One caveat on the Android rows: they are compiled and unit-tested in CI, but **nothing in
+the agent has been run on a real device**. Treat them as verified-by-compiler, not
+verified-in-the-field.
 
 ---
 
@@ -56,6 +60,13 @@ push and pull request.
 | Errors do not leak stack traces in production | `backend/src/middleware/errorHandler.ts` | `errorHandling.test.ts` |
 | The device wire contract cannot drift from the agent | `@mdm/shared-types` | `deviceContract.test.ts` — parses the Kotlin model |
 | No secrets committed to the repository | CI | gitleaks, blocking |
+| Policy results report what was actually enforced | `android-app/.../PolicyOutcome.kt` | `PolicyOutcomeTest` — 19 tests |
+| Device Owner–only calls are not attempted without it | `DevicePrivilege` / `PrivilegeLevel` | `PrivilegeLevelTest` |
+| Release builds cannot ship without certificate pins | `android-app/app/build.gradle` | `assembleRelease` fails; `PinConfigurationTest` |
+| Release builds cannot ship unsigned | `android-app/app/build.gradle` | `assembleRelease` fails |
+| Certificate pinning fails closed | `CertificatePinning` / `PinConfiguration` | `PinConfigurationTest` — 13 tests |
+| Commands execute without a foregrounded Activity | `CommandExecutor` + `MDMBackgroundService` | built; **not device-tested** |
+| The agent compiles at all | CI | `assembleDebug` + `testDebugUnitTest`, blocking |
 
 ---
 
@@ -65,26 +76,27 @@ Ordered by what would hurt most. Finding numbers refer to the September 2026 rev
 
 ### Critical
 
-**F-07 — the Android agent is on the wrong platform API.** It registers a
-`DeviceAdminReceiver` (legacy Device Admin) while calling Device Owner–only methods,
-guarded by `isAdminActive()`, which does not test for that. On the Android 11–15 devices
-it targets, user restrictions, kiosk/lock-task mode and the password policy block will
-throw `SecurityException` or silently no-op — and `applyPolicy` catches the exception and
-returns a result object, so **the dashboard reports policies as applied when they are
-not**. There is no provisioning path to become Device Owner: no `GET_PROVISIONING_MODE`
-handler, no QR payload checksum, no zero-touch configuration.
+**F-07 — the agent is still not a Device Owner.**
 
-**F-08 — certificate pinning does not engage.** `shouldEnablePinning()` returns a literal
-`false` and all three pins are placeholder strings. `AppConfig.CERTIFICATE_PINNING_ENABLED
-= true` is a dead constant nothing reads. A previous document listed pinning as complete
-and NIST-compliant.
+Partly addressed. The app registers a `DeviceAdminReceiver` (legacy Device Admin) while
+most of what it needs — user restrictions, kiosk/lock-task, the password policy block —
+requires Device Owner. Those calls still cannot work.
+
+What changed is that it no longer claims they did. Every policy call is gated on the
+privilege the platform actually reports, a call above that privilege is not attempted,
+and the result names the setting, the privilege required and the privilege held. The
+dashboard is now told the truth about what was enforced.
+
+What remains is the re-platform itself: there is no provisioning path to *become* Device
+Owner — no `GET_PROVISIONING_MODE` handler, no `ADMIN_POLICY_COMPLIANCE` activity, no QR
+payload generation. Release signing and the DPC signature checksum, which that path
+depends on, are now in place (`./gradlew printProvisioningChecksum`).
+
+Until a tablet is provisioned as Device Owner, policy enforcement reports UNSUPPORTED and
+kiosk mode does not engage. That is the honest state, not a working one.
 
 ### High
 
-- **F-09** — commands execute inside an Activity, so lock, kiosk and policy commands only
-  run when the app is foregrounded. On a tablet in a bag, they do not run.
-- **F-11** — release builds are unsigned; `signingConfig` is commented out. This also
-  blocks F-07, since Device Owner provisioning needs the DPC signature checksum.
 - **F-14** — no brute-force protection and no MFA on admin login. Unauthenticated
   requests fall into the VIEWER rate-limit bucket (100 per 15 min per IP), which is ample
   for credential stuffing. `resetToken` columns exist with no implementation behind them.
@@ -103,7 +115,6 @@ and NIST-compliant.
 
 ### Medium
 
-- **F-12** — no `<queries>` declaration, so app inventory returns partial results silently.
 - **F-20** — `executeAt` / `expiresAt` are accepted, have no columns, and are discarded.
 - **F-25** — commands are marked FAILED after 5 minutes offline, which is wrong for field
   conditions measured in days.

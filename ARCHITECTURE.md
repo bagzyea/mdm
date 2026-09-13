@@ -33,7 +33,7 @@ package.json                 workspace root
 integration/shared-types/    @mdm/shared-types — the wire contract, symlinked
 backend/                     Express + Prisma + Socket.IO API
 admin-dashboard/             React + MUI + Vite operator console
-android-app/                 Kotlin agent  (not built by CI — see below)
+android-app/                 Kotlin agent  (built by CI; never run on a device)
 ```
 
 `@mdm/shared-types` is the single source of truth for what crosses the wire. It was
@@ -99,29 +99,39 @@ command and a separate CI gate; without it, type errors ship.
 
 Kotlin, `minSdk 30`, `targetSdk 35`.
 
-**This is the weakest part of the system and the largest piece of outstanding work.**
+**The agent is built by CI** as of 13 September 2026 — `assembleDebug` and
+`testDebugUnitTest` are blocking gates. Before that `gradlew` was not in the repository
+(only `gradlew.bat`), so the Android job could never have run, and the agent had in fact
+never compiled: it carried two Kotlin errors predating the readiness review.
+
+It has still **never been run on a device**. Everything here is verified by compiler and
+unit test only, and the Activity/service lifecycle work in particular needs real hardware
+before release.
+
+This remains the largest piece of outstanding work.
 
 It registers a `DeviceAdminReceiver` — the legacy Device Admin API, deprecated since
-Android 9 — while calling methods only a Device Owner may call. Those calls will throw or
-no-op on the devices it targets, and `applyPolicy` swallows the exception and reports
-success, so the dashboard shows policies as applied when they are not. There is no path
-to become Device Owner: no `GET_PROVISIONING_MODE` handler, no signature checksum in the
-QR payload, no zero-touch configuration. Release builds are unsigned, which blocks the
-fix.
+Android 9 — while most of what it needs requires Device Owner. Those calls still cannot
+work, but the agent no longer claims they did: each is gated on the privilege the platform
+reports, and unenforceable settings come back as UNSUPPORTED with the reason.
 
-**The agent is not built by CI.** `android-app/gradlew` is not in the repository — only
-`gradlew.bat` and `gradle/wrapper/` — so the Android job could never have run. Nothing
-in this repository has ever compiled the Kotlin. Restoring the wrapper is the first step
-toward making any of it verifiable.
+What remains is becoming Device Owner: no `GET_PROVISIONING_MODE` handler, no
+`ADMIN_POLICY_COMPLIANCE` activity, no QR payload generation. Release signing is in place
+now, and `./gradlew printProvisioningChecksum` emits the DPC signature checksum that
+payload needs.
 
-### The decision that shapes the next quarter
+### Decided: own Device Owner DPC
 
-Build a proper Device Owner DPC, or adopt Google's Android Management API?
+Chosen 13 September 2026, over Google's Android Management API.
 
-AMAPI is dramatically less work and Google-operated, but it will not deploy per-district
-data folders or the custom provisioning flow — and those *are* the product. The
-recommendation is a Device Owner DPC, with AMAPI as the fallback if the census timeline
-dominates. This is expensive to reverse and worth a dedicated decision.
+AMAPI is dramatically less work and Google-operated, but it will not deploy the
+per-district data folders or the custom provisioning flow — and those *are* the product.
+The cost is that the DPC, its provisioning path and its policy surface are all ours to
+build and maintain.
+
+Command execution is structured for this: `CommandExecutor` is owned by
+`MDMBackgroundService`, so it does not depend on an Activity, and policy calls already
+declare the privilege they require.
 
 ---
 
@@ -157,6 +167,10 @@ Commands
   operator → POST /api/commands { deviceIds, command, parameters }
   validated, persisted PENDING, dispatched over the device's socket room
   device reports back over the socket; identity comes from the token, not the payload
+
+  A device that was offline picks commands up on its next periodic poll or FCM wake
+  (CommandPollingWorker), which execute through the same CommandExecutor. The server
+  side of this is still wrong: commands are expired after five minutes (F-25).
 
 APK delivery
   upload → manifest parsed, package name verified, streaming SHA-256

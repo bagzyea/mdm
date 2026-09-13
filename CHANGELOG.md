@@ -8,6 +8,75 @@ recorded work as complete that was not (see `SECURITY.md`).
 
 ---
 
+## 2026-09-13 — Phase 2 (agent correctness)
+
+### The agent had never compiled
+
+Verified by building commit f93cab8 — the one the readiness review examined — in a
+container with JDK 17 and the Android 35 SDK. It fails with two Kotlin compile errors: a
+duplicate `AppInstallationPackage` shadowing the one the installer actually takes, and a
+call to an `MDMService.sendMessage` that does not exist.
+
+Nothing in this repository had ever built the Kotlin, because the CI job that would have
+began by `chmod`-ing an `android-app/gradlew` that is not checked in. Every claim the
+withdrawn status documents made about agent behaviour described code that could not be
+compiled.
+
+Both errors are fixed, the Gradle wrapper is committed, and `assembleDebug` +
+`testDebugUnitTest` are now blocking CI gates.
+
+### Agent fixes
+
+- **F-07** — policy application no longer reports success for settings that were never
+  applied. Calls are gated on the privilege the platform actually reports; a call above
+  it is not attempted, and results name the setting, the privilege required and the
+  privilege held.
+- **F-08** — real certificate pinning. Pins are supplied at build time and the
+  configuration fails closed; `assembleRelease` refuses to produce an APK without two
+  valid pins. The previous code returned a literal `false` from `shouldEnablePinning()`,
+  used placeholder pins, and had a `verifyCertificatePins()` that returned `true` without
+  comparing anything.
+- **F-09** — commands execute in the foreground service, not the Activity. Also fixed
+  `CommandPollingWorker`, which fetched pending commands and discarded them — so the FCM
+  wake and periodic poll paths, the ones that matter for a tablet returning from days out
+  of coverage, did nothing at all.
+- **F-11** — release builds are signed, from a keystore supplied by properties or
+  environment. New `printProvisioningChecksum` task emits the DPC signature checksum the
+  Device Owner QR payload needs.
+- **F-12** — `<queries>` and `QUERY_ALL_PACKAGES` declared, so app inventory stops
+  silently returning a fraction of what is installed.
+- Provisioning progress was emitted as a generic `message` the server does not route;
+  it now uses the `provisioningProgress` event the server listens for.
+
+### Agent dependencies
+
+Updated to current versions, each verified by a successful build: core-ktx 1.15.0,
+coroutines 1.9.0, lifecycle 2.9.0, room 2.7.1, work 2.10.0, gson 2.11.0, firebase-bom
+33.7.0, socket.io-client 2.1.1, security-crypto 1.1.0-alpha06. OkHttp 5 and Retrofit 3
+deliberately deferred as majors needing a device test.
+
+Note: `androidx.security.crypto`, which stores the device token and enrollment code, is
+deprecated by Google. A migration path still needs choosing.
+
+### Tests
+
+32 Android unit tests, 0 failing — the first meaningful ones in the agent. The previous
+suite asserted tautologies (`assertTrue(true)`) and was removed.
+
+### Decided
+
+Own Device Owner DPC, rather than Google's Android Management API — AMAPI cannot deploy
+the per-district data folders or the custom provisioning flow, which are the product.
+
+### Not done
+
+The re-platform itself: `GET_PROVISIONING_MODE`, `ADMIN_POLICY_COMPLIANCE`, QR payload
+generation, silent install via `PackageInstaller`. And **nothing in the agent has been run
+on a device** — there is no hardware here. All agent work is verified by compiler and unit
+test only.
+
+---
+
 ## 2026-09-13 — Phase 0 (contain) and Phase 1 (buildable)
 
 Addresses the September 2026 readiness review. Finding numbers in brackets.
