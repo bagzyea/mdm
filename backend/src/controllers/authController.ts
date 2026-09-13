@@ -26,11 +26,16 @@ export const register = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('User registration error:', error);
-    
+
     if (error instanceof Error) {
-      res.status(400).json({ 
+      // A duplicate username or email is a conflict, not a malformed request. Every
+      // failure was previously reported as 400, so a client could not tell the two
+      // apart — the device enrollment path already distinguishes them (P2002 -> 409).
+      const isDuplicate = /already exists|duplicate|unique constraint/i.test(error.message);
+
+      res.status(isDuplicate ? 409 : 400).json({
         error: error.message,
-        code: 'REGISTRATION_FAILED'
+        code: isDuplicate ? 'USER_ALREADY_EXISTS' : 'REGISTRATION_FAILED'
       });
       return;
     }

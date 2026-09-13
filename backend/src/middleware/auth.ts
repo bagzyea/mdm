@@ -221,7 +221,9 @@ export const auditLog = (action: string, resource: string) => {
           req.user.userId,
           action,
           resource,
-          req.params.id,
+          // Express types a wildcard param as string | string[]; the audit column takes
+          // a single id, so only a plain string is recorded.
+          typeof req.params.id === 'string' ? req.params.id : null,
           {
             method: req.method,
             url: req.originalUrl,

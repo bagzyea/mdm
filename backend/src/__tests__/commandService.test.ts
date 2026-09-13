@@ -1,38 +1,37 @@
-import { CommandService } from '../services/commandService';
-import { PrismaClient } from '@prisma/client';
 import { Server as SocketIOServer } from 'socket.io';
 
-// Mock Prisma Client
-jest.mock('@prisma/client');
+/**
+ * CommandService reads the shared client from src/db.ts, so that module is what has to
+ * be mocked. This suite previously assigned its mock to `(global as any).prisma`, which
+ * the service never consulted — so every query returned undefined and the assertions
+ * failed regardless of the code under test.
+ */
+const mockPrisma = {
+  remoteCommand: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+  deviceEvent: { create: jest.fn() },
+  device: { findUnique: jest.fn(), update: jest.fn() },
+};
+
+jest.mock('../db', () => ({
+  __esModule: true,
+  default: mockPrisma,
+  prisma: mockPrisma,
+  closeDatabase: jest.fn(),
+}));
+
+import { CommandService } from '../services/commandService';
 
 describe('CommandService', () => {
   let commandService: CommandService;
   let mockIO: jest.Mocked<SocketIOServer>;
-  let mockPrisma: jest.Mocked<PrismaClient>;
 
   beforeEach(() => {
-    // Mock Socket.IO
+    jest.clearAllMocks();
+
     mockIO = {
-      to: jest.fn().mockReturnValue({
-        emit: jest.fn()
-      })
+      to: jest.fn().mockReturnValue({ emit: jest.fn() })
     } as any;
 
-    // Mock Prisma
-    mockPrisma = {
-      remoteCommand: {
-        findUnique: jest.fn(),
-        update: jest.fn()
-      },
-      deviceEvent: {
-        create: jest.fn()
-      }
-    } as any;
-
-    // Inject mocked Prisma
-    (global as any).prisma = mockPrisma;
-
-    // Create service instance
     commandService = new CommandService(mockIO);
   });
 

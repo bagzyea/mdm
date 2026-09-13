@@ -1,5 +1,10 @@
 name: CI Pipeline
 
+# Every job here is a gate. Nothing that can fail is marked continue-on-error, because a
+# pipeline that reports green while a step failed is worse than no pipeline — the repo
+# already had an Android job that could never have passed (it chmod'd a gradlew that is
+# not checked in) and a backend job whose `npm ci` failed on a file: dependency.
+
 on:
   push:
     branches: [main, develop, stan]
@@ -8,42 +13,57 @@ on:
 
 env:
   NODE_VERSION: '20'
+  # Required by src/config/env.ts, which refuses to start without a real secret.
+  # A throwaway value: it signs nothing that outlives the job.
+  JWT_SECRET: ci-only-secret-value-not-used-anywhere-else-32b
 
 jobs:
-  # Backend linting and type checking
-  backend-lint:
-    name: Backend Lint & Type Check
+  # ---------------------------------------------------------------------------
+  # Backend and dashboard share one install: the repo is an npm workspace, so
+  # @mdm/shared-types is symlinked rather than copied and cannot go stale.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & Typecheck
     runs-on: ubuntu-latest
-    defaults:
-      run:
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install (workspace root)
+        run: npm ci
+
+      - name: Build shared wire contracts
+        run: npm run build:types
+
+      - name: Generate Prisma client
         working-directory: ./backend
+        run: npx prisma generate
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript build check
+      # `tsc` for the backend, `tsc --noEmit` for the dashboard. The dashboard's own
+      # `vite build` does not typecheck, so without this its type errors ship.
+      - name: Typecheck backend
+        working-directory: ./backend
         run: npm run build
 
-      - name: Run tests
-        run: npm test -- --passWithNoTests
-
-  # Frontend build check
-  frontend-build:
-    name: Frontend Build Check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
+      - name: Typecheck dashboard
         working-directory: ./admin-dashboard
+        run: npm run type-check
+
+      - name: Build dashboard
+        working-directory: ./admin-dashboard
+        run: npm run build
+
+  test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: [build]
 
     steps:
       - uses: actions/checkout@v4
@@ -53,18 +73,89 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: admin-dashboard/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install (workspace root)
         run: npm ci
 
-      - name: Build TypeScript
-        run: npm run build
+      - name: Build shared wire contracts
+        run: npm run build:types
 
-  # Android build validation
+      - name: Generate Prisma client
+        working-directory: ./backend
+        run: npx prisma generate
+
+      # Includes the authorization matrix, the socket handshake tests, the enrollment
+      # handshake, and the cross-language DeviceInfo contract test — which reads the
+      # Kotlin model, so the Android sources must be checked out for it to run.
+      - name: Run tests
+        working-directory: ./backend
+        run: npm test
+
+  secrets-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A real gate, not advisory. Three modules previously fell back to a signing
+      # secret committed to this repository; this exists to stop the next one.
+      #
+      # Run from the official image rather than gitleaks-action, which requires a paid
+      # licence key for organisation-owned repositories and would fail here for a
+      # reason that has nothing to do with the code.
+      - name: Scan for committed secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --redact --verbose --no-banner
+
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install (workspace root)
+        run: npm ci
+
+      # Full report, for visibility. Does not gate on its own.
+      - name: Report all advisories
+        continue-on-error: true
+        run: npm audit
+
+      # Blocking at `critical`, which is what the tree can pass today.
+      #
+      # There are currently 11 high-severity advisories, all transitive and all needing
+      # major-version bumps (vite 8, nodemailer 10, the typescript-eslint chain);
+      # `npm audit fix` without --force clears none of them. Setting this to `high`
+      # would leave the pipeline red from the first run, which is how the previous
+      # pipeline ended up being ignored. Tighten to `high` once those upgrades are done
+      # and the app has been retested.
+      - name: Audit dependencies
+        run: npm audit --audit-level=critical
+
+  # ---------------------------------------------------------------------------
+  # The Android job is deliberately NOT part of the required set yet: the Gradle
+  # wrapper script is missing from the repository (android-app/gradlew.bat and
+  # gradle/wrapper/ are committed, gradlew is not), so it cannot run. Restoring
+  # the wrapper and turning this into a gate is tracked as part of the agent
+  # re-platform work — until then the Kotlin in this repo is entirely unbuilt.
+  # ---------------------------------------------------------------------------
   android-build:
     name: Android Build Validation
     runs-on: ubuntu-latest
+    if: false # See the note above: android-app/gradlew is not checked in.
 
     steps:
       - uses: actions/checkout@v4
@@ -79,105 +170,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Make gradlew executable
-        run: chmod +x android-app/gradlew
-
-      - name: Build Android APK
+      - name: Build debug APK
         working-directory: android-app
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon
 
-  # Code quality and security checks
-  security:
-    name: Security & Quality Checks
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - working-directory: backend
-            name: Backend
-          - working-directory: admin-dashboard
-            name: Frontend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install dependencies (${{ matrix.name }})
-        working-directory: ${{ matrix.working-directory }}
-        run: npm ci
-
-      - name: Check for vulnerabilities (${{ matrix.name }})
-        working-directory: ${{ matrix.working-directory }}
-        continue-on-error: true
-        run: npm audit --audit-level=moderate
-
-  # Integration tests (optional, runs after other checks pass)
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [backend-lint, frontend-build]
-    if: success()
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: mdm_test
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
-
-      - name: Setup database
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/mdm_test
-        run: npx prisma db push --skip-generate
-
-      - name: Run integration tests
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/mdm_test
-        run: npm test -- --testPathPattern="integration" --passWithNoTests
-
-  # Final status check
-  ci-status:
-    name: CI Status
-    runs-on: ubuntu-latest
-    needs: [backend-lint, frontend-build, android-build, security]
-    if: always()
-
-    steps:
-      - name: Check CI status
-        run: |
-          if [ "${{ needs.backend-lint.result }}" = "failure" ] || \
-             [ "${{ needs.frontend-build.result }}" = "failure" ] || \
-             [ "${{ needs.android-build.result }}" = "failure" ] || \
-             [ "${{ needs.security.result }}" = "failure" ]; then
-            echo "CI Pipeline Failed!"
-            exit 1
-          fi
-          echo "✅ CI Pipeline Passed!"
+      - name: Run unit tests
+        working-directory: android-app
+        run: ./gradlew testDebugUnitTest --no-daemon

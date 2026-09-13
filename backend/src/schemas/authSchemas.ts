@@ -56,8 +56,16 @@ export const registerSchema = Joi.object({
     .required(),
   
   role: Joi.string()
-    .valid('ADMIN', 'MANAGER', 'USER')
-    .default('USER')
+    // Must match the UserRole union and ROLE_PERMISSIONS in src/types/auth.ts.
+    // This previously allowed 'MANAGER' and 'USER', which the system does not define —
+    // so a user could be created with a role holding no permissions at all — while
+    // rejecting OPERATOR and VIEWER, which meant they could not be registered via the
+    // API. DEVICE is deliberately excluded: device identities come from enrollment.
+    .valid('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER')
+    // Least privilege by default. The previous default was 'USER', a role the system
+    // does not define, so an omitted role produced an account ROLE_PERMISSIONS has no
+    // entry for.
+    .default('VIEWER')
 });
 
 export const refreshTokenSchema = Joi.object({

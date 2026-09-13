@@ -22,20 +22,14 @@ describe('Authentication Middleware', () => {
 
     mockNext = jest.fn();
 
-    // Mock AuthService
-    mockAuthService = {
-      verifyToken: jest.fn(),
-      getUserById: jest.fn()
-    } as any;
-
-    // Replace the authService in the module
-    jest.doMock('../middleware/auth', () => {
-      const actualAuth = jest.requireActual('../middleware/auth');
-      return {
-        ...actualAuth,
-        authService: mockAuthService
-      };
-    });
+    // middleware/auth.ts holds a module-private `new AuthService()`, so a mock object
+    // built here is never consulted. jest.mock() above automocks the class, and its
+    // prototype methods are shared by every instance — including the middleware's — so
+    // the prototype is the handle to configure. (The previous jest.doMock() ran after
+    // the module under test had already been imported, and did nothing at all.)
+    mockAuthService = AuthService.prototype as jest.Mocked<AuthService>;
+    mockAuthService.verifyToken.mockReset();
+    mockAuthService.getUserById.mockReset();
   });
 
   describe('authenticateToken', () => {

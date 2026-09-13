@@ -60,7 +60,9 @@ describe('Auth Schemas', () => {
       const { error, value } = registerSchema.validate(validData);
       expect(error).toBeUndefined();
       expect(value).toMatchObject(validData);
-      expect(value.role).toBe('USER'); // Default role
+      // Least privilege. 'USER' was the old default and is not a role the system
+      // defines — ROLE_PERMISSIONS has no entry for it.
+      expect(value.role).toBe('VIEWER');
     });
 
     it('should validate with custom role', () => {
