@@ -800,7 +800,21 @@ export const apkVaultService = {
   /** Permanently delete an APK and its file from the server */
   delete: (id: string): Promise<void> => apiService.delete(`/apk-registry/${id}`),
 
-  /** Returns a publicly-accessible download URL for the APK */
-  getDownloadUrl: (filePath: string): string =>
-    `${window.location.protocol}//${window.location.hostname}:5001${filePath}`,
+  /**
+   * Ask the server for a short-lived signed download URL for an APK.
+   *
+   * APKs are no longer served from an unauthenticated static path (finding F-06), so a
+   * URL can no longer be constructed client-side. The previous implementation also
+   * built `<host>:5001/apks/<file>`, which never matched the served `/public/apks/`
+   * path, so the download button was already broken.
+   */
+  getDownloadUrl: async (id: string): Promise<string> => {
+    const response: { url: string; expiresAt: string } = await apiService.get(
+      `/apk-registry/${id}/download-url`
+    );
+    return new URL(
+      response.url,
+      `${window.location.protocol}//${window.location.hostname}:5001`
+    ).toString();
+  },
 };

@@ -6,6 +6,7 @@ import {
   ProvisioningSecurityConfig
 } from '../types';
 import { getCommandService } from './commandServiceInstance';
+import { signStoredApkReference } from './signedDownloads';
 import { CommandType } from '../types/commands';
 
 const prisma = new PrismaClient();
@@ -83,7 +84,10 @@ export class ProvisioningService {
         apps: (profile.applications || []).map((app: any) => ({
           packageName: app.packageName,
           appName: app.appName,
-          apkUrl: app.apkUrl,
+          // Signed at dispatch, not stored: APK downloads are no longer served from an
+          // unauthenticated static path (finding F-06), and a signed URL baked into a
+          // long-lived profile would expire before the profile was used.
+          apkUrl: signStoredApkReference(app.apkUrl) ?? app.apkUrl,
           apkHash: app.apkHash,
           permissions: app.requiredPermissions || [],
           installOrder: app.installOrder,
@@ -422,7 +426,8 @@ export class ProvisioningService {
         command: 'INSTALL_APP' as CommandType,
         parameters: {
           packageName: app.packageName,
-          apkUrl: app.apkUrl,
+          // Signed at dispatch — see the note in buildProvisioningPayload above.
+          apkUrl: signStoredApkReference(app.apkUrl) ?? app.apkUrl,
           apkHash: app.apkHash
         },
         status: 'PENDING'

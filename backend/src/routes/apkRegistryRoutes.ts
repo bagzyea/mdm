@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { uploadAPK, getAPKs, deleteAPK, getCompatibleAPKs } from '../controllers/apkRegistryController';
+import { uploadAPK, getAPKs, deleteAPK, getCompatibleAPKs, getAPKDownloadUrl } from '../controllers/apkRegistryController';
 import { authenticateToken, requirePermission } from '../middleware/auth';
 
 const router = express.Router();
@@ -38,6 +38,7 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 500 * 1024 * 10
 // API Routes
 router.get('/compatible', authenticateToken, requirePermission('provisioning', 'read'), getCompatibleAPKs);
 router.get('/', authenticateToken, requirePermission('provisioning', 'read'), getAPKs);
+router.get('/:id/download-url', authenticateToken, requirePermission('provisioning', 'read'), getAPKDownloadUrl);
 router.post('/upload', authenticateToken, requirePermission('provisioning', 'create'), upload.single('apk'), uploadAPK);
 router.delete('/:id', authenticateToken, requirePermission('provisioning', 'delete'), deleteAPK);
 

@@ -220,7 +220,10 @@ export const ProvisioningProfilesPage: React.FC = () => {
           packageName: sel.apk.packageName,
           appName: sel.apk.appName,
           version: sel.apk.version,
-          apkUrl: `http://${window.location.hostname}:5001/public/apks/${sel.apk.filePath.split('/').pop()}`,
+          // Store a stable reference, not a URL. The backend mints a short-lived
+          // signed download URL at dispatch time (finding F-06) — a signed URL baked
+          // into a profile here would expire long before the profile was used.
+          apkUrl: sel.apk.filePath,
           apkHash: sel.apk.apkHash,
           requiredPermissions: sel.apk.permissions,
           installOrder: sel.installOrder,

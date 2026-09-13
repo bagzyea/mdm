@@ -211,10 +211,37 @@ const AppVaultPage: React.FC = () => {
     }
   };
 
-  const copyUrl = (filePath: string) => {
-    const url = apkVaultService.getDownloadUrl(filePath);
-    navigator.clipboard.writeText(url);
-    setSnackbar({ open: true, message: 'Download URL copied to clipboard!', severity: 'success' });
+  // Download URLs are now minted by the server and expire (finding F-06), so both of
+  // these are asynchronous where they used to be simple string construction.
+  const copyUrl = async (id: string) => {
+    try {
+      const url = await apkVaultService.getDownloadUrl(id);
+      await navigator.clipboard.writeText(url);
+      setSnackbar({
+        open: true,
+        message: 'Signed download URL copied — it expires in one hour',
+        severity: 'success',
+      });
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err?.response?.data?.message || 'Could not create a download URL',
+        severity: 'error',
+      });
+    }
+  };
+
+  const downloadApk = async (id: string) => {
+    try {
+      const url = await apkVaultService.getDownloadUrl(id);
+      window.open(url, '_blank', 'noopener');
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err?.response?.data?.message || 'Could not create a download URL',
+        severity: 'error',
+      });
+    }
   };
 
   // ── Filtering ────────────────────────────────────────────────────────────────
@@ -440,7 +467,7 @@ const AppVaultPage: React.FC = () => {
                       size="small"
                       variant="outlined"
                       startIcon={<ContentCopy sx={{ fontSize: 14 }} />}
-                      onClick={() => copyUrl(app.filePath)}
+                      onClick={() => copyUrl(app.id)}
                       sx={{ textTransform: 'none', borderRadius: 1.5, fontSize: '0.75rem', flex: 1 }}
                     >
                       Copy URL
@@ -449,8 +476,7 @@ const AppVaultPage: React.FC = () => {
                   <Tooltip title="Download APK">
                     <IconButton
                       size="small"
-                      href={apkVaultService.getDownloadUrl(app.filePath)}
-                      target="_blank"
+                      onClick={() => downloadApk(app.id)}
                       sx={{ color: 'text.secondary' }}
                     >
                       <Download fontSize="small" />

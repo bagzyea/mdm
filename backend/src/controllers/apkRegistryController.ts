@@ -3,8 +3,24 @@ import { PrismaClient, APKCategory } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import {
+  hashFile,
+  readApkManifest,
+  assertPackageNameMatches,
+  ApkInspectionError,
+} from '../services/apkInspector';
+import { signApkDownload } from '../services/signedDownloads';
 
 const prisma = new PrismaClient();
+
+/** Remove a rejected upload so unverified APKs never linger in the served directory. */
+async function discardUpload(filePath: string): Promise<void> {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    console.warn('Could not remove rejected upload:', filePath, error);
+  }
+}
 
 export const uploadAPK = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -14,37 +30,55 @@ export const uploadAPK = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Default fallbacks for testing
     const {
-      packageName = 'com.example.app',
+      packageName: declaredPackageName,
       appName = file.originalname.replace('.apk', ''),
       displayName = file.originalname.replace('.apk', ''),
       description = '',
       category = 'BUSINESS',
-      version = '1.0.0',
-      versionCode = '1'
+      version,
+      versionCode
     } = req.body;
 
-    // Calculate file hash (SHA-256)
-    const fileBuffer = fs.readFileSync(file.path);
-    const hashSum = crypto.createHash('sha256');
-    hashSum.update(fileBuffer);
-    const fileHash = hashSum.digest('hex');
+    // The APK's own manifest is authoritative for its identity. Previously packageName
+    // came from the request body with a default of 'com.example.app' and was never
+    // checked, so an APK could be registered — and installed on the fleet — under an
+    // identity that was not its own (finding F-06).
+    let manifest;
+    try {
+      manifest = await readApkManifest(file.path);
+      assertPackageNameMatches(declaredPackageName, manifest);
+    } catch (error) {
+      await discardUpload(file.path);
+
+      if (error instanceof ApkInspectionError) {
+        res.status(400).json({ message: error.message, code: 'APK_VERIFICATION_FAILED' });
+        return;
+      }
+      throw error;
+    }
+
+    // Streaming hash: the previous readFileSync pulled up to 500 MB into memory and
+    // blocked the event loop for the duration of the read.
+    const fileHash = await hashFile(file.path);
 
     // Create DB entry
     const apk = await prisma.aPKRegistry.create({
       data: {
-        packageName,
+        packageName: manifest.packageName,
         appName,
         displayName,
         description,
         category: category as APKCategory,
-        version,
-        versionCode: parseInt(versionCode as string, 10) || 1,
+        version: version || manifest.versionName || '1.0.0',
+        versionCode: parseInt(versionCode as string, 10) || manifest.versionCode || 1,
         fileSize: file.size,
-        filePath: `/apks/${file.filename}`, // Safe relative public path
+        // Stored as a bare filename; the download route resolves it and signs access.
+        filePath: `/apks/${file.filename}`,
         fileHash,
-        uploadedBy: (req as any).user?.id || 'admin',
+        // The token payload field is `userId`; `id` was always undefined, so every
+        // upload was attributed to the literal 'admin' (finding F-21).
+        uploadedBy: req.user?.userId || 'unknown',
         supportedDeviceModels: [],
       }
     });
@@ -103,6 +137,36 @@ export const getCompatibleAPKs = async (req: Request, res: Response): Promise<vo
     res.status(200).json({ apks: safeApks });
   } catch (error: any) {
     res.status(500).json({ message: 'Error fetching compatible APKs', error: error.message });
+  }
+};
+
+/**
+ * Mint a short-lived signed download URL for one APK.
+ *
+ * Downloads used to be served from an unauthenticated static mount. Callers now ask
+ * for a link, which is valid only for that file and only for a short window.
+ */
+export const getAPKDownloadUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const apk = await prisma.aPKRegistry.findUnique({ where: { id: id as string } });
+
+    if (!apk) {
+      res.status(404).json({ message: 'APK not found' });
+      return;
+    }
+
+    const filename = path.basename(apk.filePath);
+    const signed = signApkDownload(filename);
+
+    res.status(200).json({
+      url: signed.url,
+      expiresAt: signed.expiresAt.toISOString(),
+      fileHash: apk.fileHash,
+      packageName: apk.packageName,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error creating download URL', error: error.message });
   }
 };
 

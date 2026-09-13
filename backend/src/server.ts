@@ -11,6 +11,7 @@ import path from 'path';
 import logger from './logger';
 // Imported for its side effect: validates required secrets and refuses to start without them.
 import './config/env';
+import { verifyApkDownload, InvalidDownloadSignature } from './services/signedDownloads';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
 
 // Load environment variables
@@ -51,8 +52,45 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(validateRequest);
 
-// Serve uploaded APKs publicly (Android devices fetch during Zero-Touch provisioning)
-app.use('/public/apks', express.static(path.join(__dirname, '../public/apks')));
+/**
+ * APK downloads (finding F-06).
+ *
+ * This was `app.use('/public/apks', express.static(...))` — no authentication at all,
+ * which leaked the full application inventory of the census fleet to anyone who could
+ * reach the server and put nothing between a hostile upload and every tablet.
+ *
+ * Devices download APKs with a bare HTTP GET during provisioning, so bearer auth is
+ * awkward on this path. Instead the server mints short-lived signed URLs
+ * (GET /api/apk-registry/:id/download-url) and this route verifies the signature. The
+ * device downloader is unchanged — it just receives a URL that expires.
+ */
+app.get('/downloads/apks/:filename', (req, res) => {
+  const filename = req.params.filename as string;
+
+  try {
+    verifyApkDownload(filename, req.query.expires, req.query.sig);
+  } catch (error) {
+    if (error instanceof InvalidDownloadSignature) {
+      return res.status(403).json({ error: error.message, code: 'INVALID_DOWNLOAD_LINK' });
+    }
+    throw error;
+  }
+
+  const apkDirectory = path.join(__dirname, '../public/apks');
+  const absolutePath = path.join(apkDirectory, filename);
+
+  // Defence in depth: assertSafeFilename already rejects traversal, but the resolved
+  // path must still land inside the APK directory.
+  if (!absolutePath.startsWith(apkDirectory + path.sep)) {
+    return res.status(403).json({ error: 'Invalid file name', code: 'INVALID_DOWNLOAD_LINK' });
+  }
+
+  return res.sendFile(absolutePath, (error: any) => {
+    if (error && !res.headersSent) {
+      res.status(error.statusCode === 404 ? 404 : 500).json({ error: 'APK not available' });
+    }
+  });
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
