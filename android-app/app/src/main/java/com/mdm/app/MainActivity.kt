@@ -431,18 +431,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Server-initiated device unlock
+    // Server-initiated device unlock.
+    //
+    // This previously called lockNow() — the exact opposite of what it reported — and
+    // then told the dashboard the device had been unlocked (finding F-10).
+    //
+    // Disabling the keyguard requires Device Owner privilege; isAdminActive() does not
+    // imply it. Until the app is provisioned as Device Owner (finding F-07), this
+    // reports an honest failure rather than silently doing nothing or the opposite.
     private suspend fun executeServerUnlockDevice(payload: org.json.JSONObject?) {
-        if (devicePolicyManager.isAdminActive(deviceAdminComponent)) {
-            try {
-                // Disable lock screen (requires appropriate permissions)
-                devicePolicyManager.lockNow() // First lock it
-                updateStatus("Device unlocked by administrator", StatusType.SUCCESS)
-            } catch (e: Exception) {
-                throw Exception("Failed to unlock device: ${e.message}")
+        if (!devicePolicyManager.isDeviceOwnerApp(packageName)) {
+            throw Exception(
+                "UNLOCK_DEVICE requires Device Owner privilege; this app is not the device owner"
+            )
+        }
+
+        try {
+            val disabled = devicePolicyManager.setKeyguardDisabled(deviceAdminComponent, true)
+            if (!disabled) {
+                throw Exception(
+                    "The platform refused to disable the keyguard; a secure lock screen is set"
+                )
             }
-        } else {
-            throw Exception("Device admin not active")
+            updateStatus("Device keyguard disabled by administrator", StatusType.SUCCESS)
+        } catch (e: SecurityException) {
+            throw Exception("Not permitted to disable the keyguard: ${e.message}")
         }
     }
 
@@ -457,15 +470,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Server-initiated device location request
-    private suspend fun executeServerLocateDevice(payload: org.json.JSONObject?) {
+    // Server-initiated device location request.
+    //
+    // This previously updated a status string and returned, collecting no location and
+    // sending no result, while the dashboard recorded the command as executed
+    // (finding F-10). It now resolves an actual fix and returns it as the command
+    // result — so the caller must not send the generic result for this command.
+    private suspend fun executeServerLocateDevice(
+        payload: org.json.JSONObject?,
+        commandId: String
+    ) {
+        val enableHighAccuracy = payload?.optBoolean("enableHighAccuracy") ?: false
+        updateStatus("Locating device...", StatusType.INFO)
+
         try {
-            val enableHighAccuracy = payload?.optBoolean("enableHighAccuracy") ?: false
-            updateStatus("Locating device...", StatusType.INFO)
-            showSnackbar("Device location request received")
-            // Location data would be collected and sent back in command result
+            val fix = com.mdm.app.utils.LocationResolver.resolve(
+                context = this,
+                highAccuracy = enableHighAccuracy
+            )
+
+            updateStatus(
+                "Location reported: ${fix.latitude}, ${fix.longitude}",
+                StatusType.SUCCESS
+            )
+            sendCommandResult(commandId, true, fix.toMap())
         } catch (e: Exception) {
-            throw Exception("Failed to locate device: ${e.message}")
+            updateStatus("Unable to locate device: ${e.message}", StatusType.ERROR)
+            sendCommandResult(commandId, false, null, e.message ?: "Location unavailable")
         }
     }
 
@@ -536,7 +567,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     "LOCATE_DEVICE", "locate_device" -> {
                         Log.d(TAG, "Executing LOCATE_DEVICE command")
-                        executeServerLocateDevice(payload)
+                        // Sends its own result carrying the location fix.
+                        executeServerLocateDevice(payload, commandId)
+                        return@launch
                     }
                     "APPLY_POLICY", "apply_policy", "UPDATE_POLICY", "update_policy", "REMOVE_POLICY", "remove_policy" -> {
                         Log.d(TAG, "Executing POLICY modification command")
