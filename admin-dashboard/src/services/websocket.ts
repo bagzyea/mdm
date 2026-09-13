@@ -26,11 +26,21 @@ class WebSocketService {
       this.socket = null;
     }
 
+    // The server authenticates the Socket.IO handshake (io.use) and refuses any
+    // connection without a valid token, so the token must be supplied here rather
+    // than in a follow-up 'adminConnect' event.
+    const token = this.pendingAdminToken ?? localStorage.getItem('mdm_token');
+    if (!token) {
+      console.warn('Cannot open WebSocket: no auth token');
+      return;
+    }
+
     this.socket = io(import.meta.env.VITE_WS_URL || 'http://localhost:5001', {
       transports: ['websocket'],
       upgrade: true,
       rememberUpgrade: true,
       reconnection: false, // We handle reconnection manually
+      auth: { token },
     });
 
     this.socket.on('connect', () => {
@@ -249,6 +259,7 @@ class WebSocketService {
       console.warn('Cannot join admin room: no auth token');
       return;
     }
+    // Set before connect(): the handshake reads this token.
     this.pendingAdminToken = jwt;
 
     // Ensure socket is connected before trying to authenticate
@@ -267,6 +278,9 @@ class WebSocketService {
     this.pendingAdminToken = null;
   }
 
+  // Authentication happens at the handshake; the server ignores this payload's token
+  // and answers from the already-authenticated socket. Retained because the client
+  // waits for the 'adminConnected' acknowledgement.
   private authenticateAdmin(token: string): void {
     if (!this.socket?.connected) return;
     this.socket.emit('adminConnect', { token });

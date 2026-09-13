@@ -76,6 +76,7 @@ import apkRegistryRoutes from './routes/apkRegistryRoutes';
 
 // Import authentication middleware
 import { authenticateToken } from './middleware/auth';
+import { installSocketAuth, resolveDeviceId, joinIdentityRooms } from './socket/auth';
 import { AuthService } from './services/authService';
 
 const authService = new AuthService();
@@ -220,10 +221,19 @@ if (process.env.NODE_ENV === 'test') {
   backgroundJobs.forEach((timer) => timer.unref());
 }
 
+// WebSocket handshake authentication and device-identity pinning (finding F-03).
+// Implemented in src/socket/auth.ts so the tests exercise the same code the server runs.
+installSocketAuth(io);
+
 // WebSocket connection handling
 io.on('connection', (socket) => {
-  console.log('[SOCKET] New connection:', socket.id);
-  logger.info({ socketId: socket.id }, 'Socket connected');
+  logger.info(
+    { socketId: socket.id, role: socket.data.role, deviceId: socket.data.deviceId },
+    'Socket connected'
+  );
+
+  // Room membership follows from the authenticated identity, not from a client event.
+  joinIdentityRooms(socket);
 
   // Catch-all handler for custom events (handles deviceIdentify and other custom events)
   socket.onAny((event: string, ...args: any[]) => {
@@ -236,67 +246,26 @@ io.on('connection', (socket) => {
     logger.debug({ event, args }, 'Received custom event');
   });
 
-  // --- Admin dashboard authentication (Fix 1.4) ---
-  // Dashboard clients call adminConnect with their JWT to join the admins room
-  socket.on('adminConnect', async (data: { token: string }) => {
-    try {
-      if (!data?.token) {
-        socket.emit('authError', { message: 'Token required for admin connection' });
-        socket.disconnect(true);
-        return;
-      }
-      const decoded = authService.verifyToken(data.token);
-      if (!decoded || decoded.role === 'DEVICE') {
-        socket.emit('authError', { message: 'Invalid admin token' });
-        socket.disconnect(true);
-        return;
-      }
-      socket.data.adminUserId = decoded.userId;
-      socket.data.adminRole = decoded.role;
-      socket.join('admins');
-      socket.emit('adminConnected', { message: 'Joined admin room', role: decoded.role });
-      logger.info({ userId: decoded.userId, role: decoded.role }, 'Admin joined admin room');
-    } catch (error) {
-      socket.emit('authError', { message: 'Invalid or expired token' });
-      socket.disconnect(true);
-    }
-  });
-
-  // Device identification — authenticated (Fix 1.2)
-  socket.on('deviceIdentify', async (data: { deviceId: string; token: string } | string) => {
-    console.log('[DEBUG] deviceIdentify event received:', JSON.stringify(data).substring(0, 100));
-
-    // Support both old string format and new object format gracefully
-    const deviceId = typeof data === 'string' ? data : data?.deviceId;
-    const token = typeof data === 'object' ? data?.token : null;
-
-    if (!deviceId) {
-      console.log('[DEBUG] deviceIdentify: deviceId is missing');
-      socket.emit('identifyError', { message: 'deviceId required' });
+  // Retained for dashboard compatibility: the client emits adminConnect after
+  // connecting and waits for adminConnected. Authentication already happened at the
+  // handshake, so the token in this payload is ignored rather than re-trusted.
+  socket.on('adminConnect', () => {
+    if (socket.data.role === 'DEVICE') {
+      socket.emit('authError', { message: 'Device tokens cannot join the admin room' });
       return;
     }
 
-    console.log('[DEBUG] deviceIdentify: deviceId =', deviceId);
+    socket.join('admins');
+    socket.emit('adminConnected', { message: 'Joined admin room', role: socket.data.role });
+    logger.info({ userId: socket.data.userId, role: socket.data.role }, 'Admin joined admin room');
+  });
 
-    // Verify device token if provided
-    if (token) {
-      try {
-        const decoded = authService.verifyToken(token);
-        if (decoded.role !== 'DEVICE') {
-          socket.emit('identifyError', { message: 'Invalid device token: wrong role' });
-          socket.disconnect(true);
-          return;
-        }
-        // Optionally verify decoded.deviceId matches if your token includes it
-      } catch {
-        socket.emit('identifyError', { message: 'Invalid device token' });
-        socket.disconnect(true);
-        return;
-      }
-    }
-
-    socket.data.deviceId = deviceId;
-    socket.join(`device_${deviceId}`); // Join device-specific room
+  // Device identification. The socket's device identity is fixed at the handshake, so
+  // this event no longer carries authentication — it only triggers the pending-command
+  // flush. The legacy bare-string form and the optional-token path are both gone.
+  socket.on('deviceIdentify', async () => {
+    const deviceId = resolveDeviceId(socket);
+    if (!deviceId) return;
 
     try {
       // Update device status and last seen
@@ -335,10 +304,13 @@ io.on('connection', (socket) => {
 
   // Generic message handler (for heartbeats and other messages from devices)
   socket.on('message', async (data: any) => {
-    console.log('[MESSAGE] Received generic message from socket:', socket.id);
     try {
       const messageData = typeof data === 'string' ? JSON.parse(data) : data;
-      console.log('[MESSAGE] Parsed data type:', messageData.type, 'deviceId:', messageData.deviceId);
+
+      // Identity comes from the token, not the message body.
+      const deviceId = resolveDeviceId(socket, messageData.deviceId);
+      if (!deviceId) return;
+      messageData.deviceId = deviceId;
 
       if (messageData.type === 'heartbeat') {
         console.log('[MESSAGE] Processing as heartbeat');
@@ -393,7 +365,10 @@ io.on('connection', (socket) => {
 
   // Device heartbeat
   socket.on('deviceHeartbeat', async (data: DeviceHeartbeatData) => {
-    console.log('[HEARTBEAT] Received from socket:', socket.id, 'data:', JSON.stringify(data).substring(0, 100));
+    const deviceId = resolveDeviceId(socket, data?.deviceId);
+    if (!deviceId) return;
+    data = { ...data, deviceId };
+
     try {
       const updateData: Record<string, unknown> = {
         lastSeen: new Date(),
@@ -477,9 +452,12 @@ io.on('connection', (socket) => {
 
   // Command response from device
   socket.on('commandResponse', async (data: CommandResponse) => {
+    const deviceId = resolveDeviceId(socket, data?.deviceId);
+    if (!deviceId) return;
+
     try {
       await commandService.handleCommandResponse(
-        data.deviceId,
+        deviceId,
         data.commandId,
         { ...data.result, timestamp: new Date() }
       );
@@ -490,6 +468,10 @@ io.on('connection', (socket) => {
 
   // Device status update — FIXED: proper DB id + correct old/new status (Fix 1.3)
   socket.on('deviceStatusUpdate', async (data: DeviceStatusUpdate) => {
+    const deviceId = resolveDeviceId(socket, data?.deviceId);
+    if (!deviceId) return;
+    data = { ...data, deviceId };
+
     try {
       // Fetch device first to get DB id (cuid) and old status before updating
       const existingDevice = await prisma.device.findUnique({
@@ -550,7 +532,6 @@ io.on('connection', (socket) => {
     try {
       const {
         sessionId,
-        deviceId: deviceIdStr,
         commandId,
         step,
         subStep,
@@ -558,6 +539,10 @@ io.on('connection', (socket) => {
         totalSteps,
         error
       } = data;
+
+      // Identity comes from the token, not the payload.
+      const deviceIdStr = resolveDeviceId(socket, data?.deviceId);
+      if (!deviceIdStr) return;
 
       // Find device by deviceId string to get DB id (cuid)
       const device = await prisma.device.findUnique({
