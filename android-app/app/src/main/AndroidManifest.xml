@@ -2,6 +2,35 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        Package visibility (finding F-12).
+
+        With targetSdk 30+ and neither a <queries> element nor QUERY_ALL_PACKAGES, package
+        visibility filtering means getInstalledPackages() returns almost nothing — so app
+        inventory and the GET_APP_LIST command reported empty or partial results rather
+        than failing loudly, and an operator could not tell a clean tablet from one the
+        agent simply could not see into.
+
+        QUERY_ALL_PACKAGES is the right permission for an MDM agent: a device management
+        app is expected to enumerate everything installed, and Google Play's policy lists
+        device management as an approved use. It is also automatically granted to a Device
+        Owner, which is what this app is being provisioned as.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <queries>
+        <!--
+            A narrower fallback for builds that cannot hold QUERY_ALL_PACKAGES: launchable
+            apps are what an enumerator would actually see and what a kiosk allowlist is
+            built from.
+        -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <!-- Essential Network Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

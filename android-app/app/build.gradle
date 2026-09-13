@@ -6,6 +6,23 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+// ---------------------------------------------------------------------------
+// Certificate pins and the server host are supplied at build time, not hardcoded
+// (finding F-08), so rotating a certificate does not require a code change.
+//
+// Set in ~/.gradle/gradle.properties or on the command line:
+//   ./gradlew assembleRelease -PmdmHost=mdm.uboscare.com \
+//       -PmdmPinPrimary=sha256/... -PmdmPinBackup=sha256/...
+//
+// Read a pin off the live server with:
+//   openssl s_client -connect HOST:443 </dev/null | openssl x509 -pubkey -noout \
+//     | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+// ---------------------------------------------------------------------------
+def mdmHost = project.findProperty('mdmHost') ?: 'mdm.uboscare.com'
+def mdmPinPrimary = project.findProperty('mdmPinPrimary') ?: ''
+def mdmPinBackup = project.findProperty('mdmPinBackup') ?: ''
+
+
 android {
     namespace 'com.mdm.app'
     compileSdk 35
@@ -24,6 +41,10 @@ android {
         buildConfigField "String", "BUILD_TYPE", "\"debug\""
         buildConfigField "String", "VERSION_NAME", "\"1.0\""
         buildConfigField "int", "VERSION_CODE", "1"
+
+        buildConfigField "String", "MDM_HOST", "\"${mdmHost}\""
+        buildConfigField "String", "CERT_PIN_PRIMARY", "\"${mdmPinPrimary}\""
+        buildConfigField "String", "CERT_PIN_BACKUP", "\"${mdmPinBackup}\""
     }
 
     buildTypes {
@@ -92,6 +113,24 @@ android {
         exclude 'META-INF/notice.txt'
         exclude 'META-INF/ASL2.0'
         exclude 'META-INF/*.kotlin_module'
+    }
+}
+
+// A release build without certificate pins would talk to the server over an
+// unauthenticated TLS connection while claiming to be pinned — which is exactly what
+// shipped before. Fail the build instead of producing that APK.
+tasks.matching { it.name.toLowerCase().contains('release') && it.name.startsWith('assemble') }.configureEach {
+    doFirst {
+        def pinPattern = ~/^sha256\/[A-Za-z0-9+\/]{43}=$/
+        def pins = [mdmPinPrimary, mdmPinBackup].findAll { it && pinPattern.matcher(it).matches() }
+
+        if (pins.size() < 2) {
+            throw new GradleException(
+                "Release builds require two valid certificate pins (primary and a backup for " +
+                "rotation). Pass -PmdmPinPrimary=sha256/... and -PmdmPinBackup=sha256/..., or " +
+                "set them in gradle.properties. See the comment at the top of app/build.gradle."
+            )
+        }
     }
 }
 
