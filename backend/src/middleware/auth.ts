@@ -214,6 +214,7 @@ export const auditLog = (action: string, resource: string) => {
           {
             method: req.method,
             url: req.originalUrl,
+            // Redacted by authService.logUserAction before it reaches the database.
             body: req.method !== 'GET' ? req.body : undefined,
             statusCode: res.statusCode
           },

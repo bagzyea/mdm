@@ -11,6 +11,7 @@ import {
   ROLE_PERMISSIONS
 } from '../types/auth';
 import config from '../config/env';
+import { redactSensitive } from '../utils/redact';
 
 const prisma = new PrismaClient();
 
@@ -359,7 +360,11 @@ export class AuthService {
         action,
         resource,
         resourceId,
-        details: details as any,
+        // Redacted at the sink rather than at each call site, so no future caller can
+        // reintroduce the problem: audit rows previously stored request bodies verbatim,
+        // which put account passwords and Wi-Fi pre-shared keys in the table in clear
+        // text (finding F-16).
+        details: redactSensitive(details) as any,
         ipAddress,
         userAgent
       }
