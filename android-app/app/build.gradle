@@ -46,6 +46,18 @@ android {
         }
     }
     
+    testOptions {
+        unitTests {
+            // android.util.Log and friends are stubs that throw in JVM unit tests.
+            // Returning defaults instead lets pure logic — the policy privilege rules,
+            // for instance — be tested without Robolectric or a device.
+            returnDefaultValues = true
+            all {
+                testLogging { events "failed" }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11

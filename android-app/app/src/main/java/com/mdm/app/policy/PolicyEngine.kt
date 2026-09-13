@@ -29,11 +29,20 @@ class PolicyEngine(private val context: Context) {
     }
     
     /**
-     * Check if device admin is active
+     * What this app may actually do (finding F-07).
+     *
+     * `isDeviceAdminActive()` is retained because the UI asks it, but it must not be used
+     * to gate policy calls: most of the DevicePolicyManager surface used below requires
+     * Device Owner, and a Device Admin calling it either throws or silently no-ops.
      */
     fun isDeviceAdminActive(): Boolean {
         return devicePolicyManager.isAdminActive(adminComponent)
     }
+
+    /** The privilege this app actually holds, asked of the platform. */
+    fun privilegeLevel(): PrivilegeLevel = DevicePrivilege.of(context, adminComponent)
+
+    fun isDeviceOwner(): Boolean = privilegeLevel() == PrivilegeLevel.DEVICE_OWNER
     
     /**
      * Apply a list of policies to the device
@@ -95,138 +104,128 @@ class PolicyEngine(private val context: Context) {
      * Apply security-related policies
      */
     private fun applySecurityPolicy(policy: DevicePolicy): PolicyApplicationResult {
-        if (!isDeviceAdminActive()) {
-            return PolicyApplicationResult(
-                policyName = policy.name,
-                status = PolicyStatus.ERROR,
-                message = "Device admin not active"
-            )
+        val outcome = PolicyOutcome(policy.name, privilegeLevel())
+        val rules = policy.rules
+
+        // The password minimum APIs are hard-deprecated for Device Admins targeting
+        // API 31+ and are only honoured for a Device Owner or Profile Owner.
+        if (rules.containsKey("passwordMinLength")) {
+            outcome.setting("passwordMinLength", PrivilegeLevel.PROFILE_OWNER) {
+                devicePolicyManager.setPasswordMinimumLength(
+                    adminComponent, (rules["passwordMinLength"] as? Double)?.toInt() ?: 4
+                )
+            }
         }
-        
-        return try {
-            val rules = policy.rules
-            
-            // Password policies
-            if (rules.containsKey("passwordMinLength")) {
-                val minLength = (rules["passwordMinLength"] as? Double)?.toInt() ?: 4
-                devicePolicyManager.setPasswordMinimumLength(adminComponent, minLength)
+        if (rules.containsKey("passwordRequiredLetters")) {
+            outcome.setting("passwordRequiredLetters", PrivilegeLevel.PROFILE_OWNER) {
+                devicePolicyManager.setPasswordMinimumLetters(
+                    adminComponent, (rules["passwordRequiredLetters"] as? Double)?.toInt() ?: 0
+                )
             }
-            
-            if (rules.containsKey("passwordRequiredLetters")) {
-                val requiredLetters = (rules["passwordRequiredLetters"] as? Double)?.toInt() ?: 0
-                devicePolicyManager.setPasswordMinimumLetters(adminComponent, requiredLetters)
+        }
+        if (rules.containsKey("passwordRequiredNumbers")) {
+            outcome.setting("passwordRequiredNumbers", PrivilegeLevel.PROFILE_OWNER) {
+                devicePolicyManager.setPasswordMinimumNumeric(
+                    adminComponent, (rules["passwordRequiredNumbers"] as? Double)?.toInt() ?: 0
+                )
             }
-            
-            if (rules.containsKey("passwordRequiredNumbers")) {
-                val requiredNumbers = (rules["passwordRequiredNumbers"] as? Double)?.toInt() ?: 0
-                devicePolicyManager.setPasswordMinimumNumeric(adminComponent, requiredNumbers)
+        }
+        if (rules.containsKey("screenLockTimeout")) {
+            outcome.setting("screenLockTimeout", PrivilegeLevel.DEVICE_ADMIN) {
+                devicePolicyManager.setMaximumTimeToLock(
+                    adminComponent, (rules["screenLockTimeout"] as? Double)?.toLong() ?: 30000L
+                )
             }
-            
-            // Screen lock timeout
-            if (rules.containsKey("screenLockTimeout")) {
-                val timeout = (rules["screenLockTimeout"] as? Double)?.toLong() ?: 30000L
-                devicePolicyManager.setMaximumTimeToLock(adminComponent, timeout)
+        }
+        if (rules.containsKey("cameraDisabled")) {
+            outcome.setting("cameraDisabled", PrivilegeLevel.DEVICE_ADMIN) {
+                devicePolicyManager.setCameraDisabled(
+                    adminComponent, rules["cameraDisabled"] as? Boolean ?: false
+                )
             }
-            
-            // Camera disabled
-            if (rules.containsKey("cameraDisabled")) {
-                val disabled = rules["cameraDisabled"] as? Boolean ?: false
-                devicePolicyManager.setCameraDisabled(adminComponent, disabled)
-            }
-            
-            // Storage encryption
-            if (rules.containsKey("requireStorageEncryption")) {
-                val required = rules["requireStorageEncryption"] as? Boolean ?: false
-                if (required) {
+        }
+        if (rules.containsKey("requireStorageEncryption")) {
+            outcome.setting("requireStorageEncryption", PrivilegeLevel.DEVICE_ADMIN) {
+                if (rules["requireStorageEncryption"] as? Boolean == true) {
                     devicePolicyManager.setStorageEncryption(adminComponent, true)
                 }
             }
-            
-            // Password Expiry
-            if (rules.containsKey("passwordExpiryDays")) {
+        }
+        if (rules.containsKey("passwordExpiryDays")) {
+            outcome.setting("passwordExpiryDays", PrivilegeLevel.PROFILE_OWNER) {
                 val days = (rules["passwordExpiryDays"] as? Double)?.toLong() ?: 0L
-                val ms = days * 24 * 60 * 60 * 1000
-                devicePolicyManager.setPasswordExpirationTimeout(adminComponent, ms)
+                devicePolicyManager.setPasswordExpirationTimeout(adminComponent, days * 24 * 60 * 60 * 1000)
             }
-            
-            // Password History
-            if (rules.containsKey("passwordHistoryCount")) {
-                val count = (rules["passwordHistoryCount"] as? Double)?.toInt() ?: 0
-                devicePolicyManager.setPasswordHistoryLength(adminComponent, count)
+        }
+        if (rules.containsKey("passwordHistoryCount")) {
+            outcome.setting("passwordHistoryCount", PrivilegeLevel.PROFILE_OWNER) {
+                devicePolicyManager.setPasswordHistoryLength(
+                    adminComponent, (rules["passwordHistoryCount"] as? Double)?.toInt() ?: 0
+                )
             }
-            
-            // Password failures leading to wipe
-            if (rules.containsKey("maxFailedAttempts")) {
+        }
+        if (rules.containsKey("maxFailedAttempts")) {
+            outcome.setting("maxFailedAttempts", PrivilegeLevel.DEVICE_ADMIN) {
                 val maxFails = (rules["maxFailedAttempts"] as? Double)?.toInt() ?: 0
                 val autoWipe = rules["autoWipeOnFailure"] as? Boolean ?: false
-                
-                if (autoWipe && maxFails > 0) {
-                    devicePolicyManager.setMaximumFailedPasswordsForWipe(adminComponent, maxFails)
-                } else if (!autoWipe) {
-                    devicePolicyManager.setMaximumFailedPasswordsForWipe(adminComponent, 0)
-                }
+                devicePolicyManager.setMaximumFailedPasswordsForWipe(
+                    adminComponent, if (autoWipe && maxFails > 0) maxFails else 0
+                )
             }
-            
-            // Trust agents (Smart Lock)
-            if (rules.containsKey("trustAgentsAllowed") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                val allowed = rules["trustAgentsAllowed"] as? Boolean ?: false
-                if (!allowed) {
-                    devicePolicyManager.setKeyguardDisabledFeatures(adminComponent, DevicePolicyManager.KEYGUARD_DISABLE_TRUST_AGENTS)
-                } else {
-                    devicePolicyManager.setKeyguardDisabledFeatures(adminComponent, 0)
-                }
-            }
-            
-            PolicyApplicationResult(
-                policyName = policy.name,
-                status = PolicyStatus.SUCCESS,
-                message = "Security policy applied successfully"
-            )
-            
-        } catch (e: SecurityException) {
-            PolicyApplicationResult(
-                policyName = policy.name,
-                status = PolicyStatus.ERROR,
-                message = "Security exception: ${e.message}"
-            )
         }
+        if (rules.containsKey("trustAgentsAllowed")) {
+            outcome.setting("trustAgentsAllowed", PrivilegeLevel.PROFILE_OWNER) {
+                val allowed = rules["trustAgentsAllowed"] as? Boolean ?: false
+                devicePolicyManager.setKeyguardDisabledFeatures(
+                    adminComponent,
+                    if (allowed) 0 else DevicePolicyManager.KEYGUARD_DISABLE_TRUST_AGENTS
+                )
+            }
+        }
+
+        return outcome.result()
     }
     
     /**
      * Apply network-related policies
      */
     private fun applyNetworkPolicy(policy: DevicePolicy): PolicyApplicationResult {
-        if (!isDeviceAdminActive()) {
-            return PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Device admin not active")
+        val outcome = PolicyOutcome(policy.name, privilegeLevel())
+        val rules = policy.rules
+
+        // User restrictions are Device Owner / Profile Owner only.
+        restriction(outcome, rules, "nfcDisabled", UserManager.DISALLOW_OUTGOING_BEAM)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            restriction(outcome, rules, "airplaneModeDisabled", UserManager.DISALLOW_AIRPLANE_MODE)
+        } else if (rules.containsKey("airplaneModeDisabled")) {
+            outcome.unsupported("airplaneModeDisabled", "requires Android 9 or later")
         }
-        
-        return try {
-            val rules = policy.rules
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                if (rules.containsKey("nfcDisabled")) {
-                    val disabled = rules["nfcDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_OUTGOING_BEAM)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_OUTGOING_BEAM)
-                    }
-                }
-                
-                if (rules.containsKey("airplaneModeDisabled") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val disabled = rules["airplaneModeDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_AIRPLANE_MODE)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_AIRPLANE_MODE)
-                    }
-                }
+
+        return outcome.result()
+    }
+
+    /**
+     * Apply one boolean rule as a user restriction.
+     *
+     * Every DISALLOW_* restriction requires Device Owner or Profile Owner; a Device Admin
+     * calling addUserRestriction throws. Routing them all through here means none can be
+     * attempted without the privilege, and each is reported individually.
+     */
+    private fun restriction(
+        outcome: PolicyOutcome,
+        rules: Map<String, Any?>,
+        rule: String,
+        restriction: String
+    ) {
+        if (!rules.containsKey(rule)) return
+
+        outcome.setting(rule, PrivilegeLevel.PROFILE_OWNER) {
+            if (rules[rule] as? Boolean == true) {
+                devicePolicyManager.addUserRestriction(adminComponent, restriction)
+            } else {
+                devicePolicyManager.clearUserRestriction(adminComponent, restriction)
             }
-            
-            Log.i(TAG, "Network policy applied: ${policy.name}")
-            PolicyApplicationResult(policy.name, PolicyStatus.SUCCESS, "Network policy applied")
-        } catch (e: Exception) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Network exception: ${e.message}")
         }
     }
     
@@ -234,55 +233,27 @@ class PolicyEngine(private val context: Context) {
      * Apply application-related policies
      */
     private fun applyApplicationPolicy(policy: DevicePolicy): PolicyApplicationResult {
-        if (!isDeviceAdminActive()) {
-            return PolicyApplicationResult(
-                policyName = policy.name,
-                status = PolicyStatus.ERROR,
-                message = "Device admin not active"
-            )
-        }
-        
-        return try {
-            val rules = policy.rules
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                if (rules.containsKey("clipboardDlpEnabled")) {
-                    val enabled = rules["clipboardDlpEnabled"] as? Boolean ?: false
-                    if (enabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_CROSS_PROFILE_COPY_PASTE)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_CROSS_PROFILE_COPY_PASTE)
-                    }
-                }
-                
-                if (rules.containsKey("preventAppDataClearing")) {
-                    val prevent = rules["preventAppDataClearing"] as? Boolean ?: false
-                    if (prevent) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_APPS_CONTROL)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_APPS_CONTROL)
-                    }
-                }
-            }
-            
-            Log.i(TAG, "Application policy applied: ${policy.name}")
-            PolicyApplicationResult(policy.name, PolicyStatus.SUCCESS, "Application policy applied")
-        } catch (e: Exception) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Application exception: ${e.message}")
-        }
+        val outcome = PolicyOutcome(policy.name, privilegeLevel())
+        val rules = policy.rules
+
+        restriction(outcome, rules, "clipboardDlpEnabled", UserManager.DISALLOW_CROSS_PROFILE_COPY_PASTE)
+        restriction(outcome, rules, "preventAppDataClearing", UserManager.DISALLOW_APPS_CONTROL)
+
+        return outcome.result()
     }
     
     /**
      * Apply compliance-related policies
      */
     private fun applyCompliancePolicy(policy: DevicePolicy): PolicyApplicationResult {
-        // Compliance policies are typically enforced through monitoring
-        Log.i(TAG, "Compliance policy applied: ${policy.name}")
-        
+        // Compliance rules are evaluated by the server from reported telemetry; there is
+        // nothing to enforce on-device. Reported as UNSUPPORTED rather than SUCCESS so the
+        // dashboard does not imply an enforcement that is not happening.
         return PolicyApplicationResult(
             policyName = policy.name,
-            status = PolicyStatus.SUCCESS,
-            message = "Compliance policy applied"
+            status = PolicyStatus.UNSUPPORTED,
+            message = "Compliance policies are evaluated server-side; nothing is enforced on-device",
+            settings = emptyList()
         )
     }
     
@@ -290,145 +261,71 @@ class PolicyEngine(private val context: Context) {
      * Apply hardware-related policies
      */
     private fun applyHardwarePolicy(policy: DevicePolicy): PolicyApplicationResult {
-        if (!isDeviceAdminActive()) {
-            return PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Device admin not active")
+        val outcome = PolicyOutcome(policy.name, privilegeLevel())
+        val rules = policy.rules
+
+        if (rules.containsKey("cameraDisabled")) {
+            outcome.setting("cameraDisabled", PrivilegeLevel.DEVICE_ADMIN) {
+                devicePolicyManager.setCameraDisabled(
+                    adminComponent, rules["cameraDisabled"] as? Boolean ?: false
+                )
+            }
         }
-        
-        return try {
-            val rules = policy.rules
-            
-            // Camera
-            if (rules.containsKey("cameraDisabled")) {
-                val disabled = rules["cameraDisabled"] as? Boolean ?: false
-                devicePolicyManager.setCameraDisabled(adminComponent, disabled)
+
+        restriction(outcome, rules, "usbFileTransferDisabled", UserManager.DISALLOW_USB_FILE_TRANSFER)
+        restriction(outcome, rules, "externalStorageDisabled", UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
+
+        if (rules.containsKey("screenCaptureDisabled")) {
+            outcome.setting("screenCaptureDisabled", PrivilegeLevel.PROFILE_OWNER) {
+                devicePolicyManager.setScreenCaptureDisabled(
+                    adminComponent, rules["screenCaptureDisabled"] as? Boolean ?: false
+                )
             }
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // USB File Transfer (requires Device Owner)
-                if (rules.containsKey("usbFileTransferDisabled")) {
-                    val disabled = rules["usbFileTransferDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER)
-                    }
-                }
-                
-                // External Storage
-                if (rules.containsKey("externalStorageDisabled")) {
-                    val disabled = rules["externalStorageDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
-                    }
-                }
-                
-                // Screen Capture
-                if (rules.containsKey("screenCaptureDisabled")) {
-                    val disabled = rules["screenCaptureDisabled"] as? Boolean ?: false
-                    devicePolicyManager.setScreenCaptureDisabled(adminComponent, disabled)
-                }
-            }
-            
-            // Microphone
-            if (rules.containsKey("microphoneDisabled")) {
-                val disabled = rules["microphoneDisabled"] as? Boolean ?: false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_UNMUTE_MICROPHONE)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_UNMUTE_MICROPHONE)
-                    }
-                }
-            }
-            
-            PolicyApplicationResult(policy.name, PolicyStatus.SUCCESS, "Hardware policy applied")
-        } catch (e: SecurityException) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Hardware exception: ${e.message} (May require Device Owner)")
-        } catch (e: Exception) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Hardware exception: ${e.message}")
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            restriction(outcome, rules, "microphoneDisabled", UserManager.DISALLOW_UNMUTE_MICROPHONE)
+        } else if (rules.containsKey("microphoneDisabled")) {
+            outcome.unsupported("microphoneDisabled", "requires Android 9 or later")
+        }
+
+        return outcome.result()
     }
     
     /**
      * Apply system-related policies
      */
     private fun applySystemPolicy(policy: DevicePolicy): PolicyApplicationResult {
-        if (!isDeviceAdminActive()) {
-            return PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "Device admin not active")
-        }
-        
-        return try {
-            val rules = policy.rules
-            
-            // System updates
-            if (rules.containsKey("systemUpdatePolicy") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val updatePolicyStr = rules["systemUpdatePolicy"] as? String
-                val sysUpdatePolicy = when (updatePolicyStr) {
-                    "AUTOMATIC" -> android.app.admin.SystemUpdatePolicy.createAutomaticInstallPolicy()
-                    "POSTPONED" -> android.app.admin.SystemUpdatePolicy.createPostponeInstallPolicy()
-                    "WINDOWED" -> {
-                        // Assuming format "02:00" might be used, but we just use a default window for now
-                        // Time logic requires parsing of string. For simplicity:
-                        android.app.admin.SystemUpdatePolicy.createWindowedInstallPolicy(120, 300) // 2am to 5am
-                    }
-                    else -> null
-                }
-                
-                if (sysUpdatePolicy != null) {
+        val outcome = PolicyOutcome(policy.name, privilegeLevel())
+        val rules = policy.rules
+
+        if (rules.containsKey("systemUpdatePolicy")) {
+            val sysUpdatePolicy = when (rules["systemUpdatePolicy"] as? String) {
+                "AUTOMATIC" -> android.app.admin.SystemUpdatePolicy.createAutomaticInstallPolicy()
+                "POSTPONED" -> android.app.admin.SystemUpdatePolicy.createPostponeInstallPolicy()
+                "WINDOWED" -> android.app.admin.SystemUpdatePolicy.createWindowedInstallPolicy(120, 300)
+                else -> null
+            }
+
+            if (sysUpdatePolicy == null) {
+                outcome.unsupported(
+                    "systemUpdatePolicy",
+                    "unrecognised value; expected AUTOMATIC, POSTPONED or WINDOWED"
+                )
+            } else {
+                // setSystemUpdatePolicy is Device Owner only.
+                outcome.setting("systemUpdatePolicy", PrivilegeLevel.DEVICE_OWNER) {
                     devicePolicyManager.setSystemUpdatePolicy(adminComponent, sysUpdatePolicy)
                 }
             }
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // Factory Reset Disabled
-                if (rules.containsKey("factoryResetDisabled")) {
-                    val disabled = rules["factoryResetDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
-                    }
-                }
-                
-                // Safe Boot Disabled
-                if (rules.containsKey("safeBootDisabled")) {
-                    val disabled = rules["safeBootDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_SAFE_BOOT)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_SAFE_BOOT)
-                    }
-                }
-                
-                // Time/Date modification
-                if (rules.containsKey("timeDateModificationDisabled")) {
-                    val disabled = rules["timeDateModificationDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_DATE_TIME)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_DATE_TIME)
-                    }
-                }
-                
-                // Account Modification (Prevents FRP)
-                if (rules.containsKey("accountModificationDisabled")) {
-                    val disabled = rules["accountModificationDisabled"] as? Boolean ?: false
-                    if (disabled) {
-                        devicePolicyManager.addUserRestriction(adminComponent, UserManager.DISALLOW_MODIFY_ACCOUNTS)
-                    } else {
-                        devicePolicyManager.clearUserRestriction(adminComponent, UserManager.DISALLOW_MODIFY_ACCOUNTS)
-                    }
-                }
-            }
-            
-            PolicyApplicationResult(policy.name, PolicyStatus.SUCCESS, "System policy applied")
-        } catch (e: SecurityException) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "System exception: ${e.message} (May require Device Owner)")
-        } catch (e: Exception) {
-            PolicyApplicationResult(policy.name, PolicyStatus.ERROR, "System exception: ${e.message}")
         }
+
+        restriction(outcome, rules, "factoryResetDisabled", UserManager.DISALLOW_FACTORY_RESET)
+        restriction(outcome, rules, "safeBootDisabled", UserManager.DISALLOW_SAFE_BOOT)
+        restriction(outcome, rules, "timeDateModificationDisabled", UserManager.DISALLOW_CONFIG_DATE_TIME)
+        restriction(outcome, rules, "accountModificationDisabled", UserManager.DISALLOW_MODIFY_ACCOUNTS)
+
+        return outcome.result()
     }
     
     /**
@@ -464,7 +361,9 @@ class PolicyEngine(private val context: Context) {
      * Reset device password
      */
     fun resetPassword(newPassword: String): Boolean {
-        return if (isDeviceAdminActive()) {
+        // resetPassword is deprecated for Device Admins targeting API 26+ and throws for
+        // them; only a Device Owner or Profile Owner can still call it.
+        return if (privilegeLevel().satisfies(PrivilegeLevel.PROFILE_OWNER)) {
             try {
                 devicePolicyManager.resetPassword(newPassword, 0)
                 true
@@ -481,22 +380,22 @@ class PolicyEngine(private val context: Context) {
      * Enable kiosk mode for specified packages
      */
     fun enableKioskMode(packageNames: Array<String>): Boolean {
-        return if (isDeviceAdminActive()) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    devicePolicyManager.setLockTaskPackages(adminComponent, packageNames)
-                    Log.i(TAG, "Kiosk mode enabled for packages: ${packageNames.joinToString()}")
-                    true
-                } else {
-                    Log.w(TAG, "Kiosk mode not supported on Android version < 21")
-                    false
-                }
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception enabling kiosk mode", e)
-                false
-            }
-        } else {
-            Log.e(TAG, "Cannot enable kiosk mode - device admin not active")
+        // setLockTaskPackages is Device Owner only. This was gated on isDeviceAdminActive(),
+        // so on a Device Admin install the call was attempted, threw, was swallowed, and
+        // returned false with nothing explaining why — while the census workflow depends
+        // on kiosk mode.
+        val held = privilegeLevel()
+        if (held != PrivilegeLevel.DEVICE_OWNER) {
+            Log.e(TAG, "Cannot enable kiosk mode: ${DevicePrivilege.explain(held, PrivilegeLevel.DEVICE_OWNER)}")
+            return false
+        }
+
+        return try {
+            devicePolicyManager.setLockTaskPackages(adminComponent, packageNames)
+            Log.i(TAG, "Kiosk mode enabled for packages: ${packageNames.joinToString()}")
+            true
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Platform refused setLockTaskPackages despite device owner privilege", e)
             false
         }
     }
@@ -505,22 +404,16 @@ class PolicyEngine(private val context: Context) {
      * Disable kiosk mode
      */
     fun disableKioskMode(): Boolean {
-        return if (isDeviceAdminActive()) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    devicePolicyManager.setLockTaskPackages(adminComponent, arrayOf())
-                    Log.i(TAG, "Kiosk mode disabled")
-                    true
-                } else {
-                    Log.w(TAG, "Kiosk mode not supported on Android version < 21")
-                    false
-                }
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception disabling kiosk mode", e)
-                false
-            }
-        } else {
-            Log.e(TAG, "Cannot disable kiosk mode - device admin not active")
+        if (privilegeLevel() != PrivilegeLevel.DEVICE_OWNER) {
+            Log.e(TAG, "Cannot disable kiosk mode: device owner privilege required")
+            return false
+        }
+        return try {
+            devicePolicyManager.setLockTaskPackages(adminComponent, arrayOf())
+            Log.i(TAG, "Kiosk mode disabled")
+            true
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Platform refused setLockTaskPackages despite device owner privilege", e)
             false
         }
     }
@@ -593,7 +486,9 @@ data class PolicyResult(
 data class PolicyApplicationResult(
     val policyName: String,
     val status: PolicyStatus,
-    val message: String
+    val message: String,
+    /** Per-setting detail, so a partially-applied policy names what did not take. */
+    val settings: List<SettingOutcome> = emptyList()
 )
 
 enum class PolicyStatus {
