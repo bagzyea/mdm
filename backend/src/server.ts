@@ -7,10 +7,10 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import os from 'os';
 import logger from './logger';
 // Imported for its side effect: validates required secrets and refuses to start without them.
 import './config/env';
+import { buildCorsPolicy, corsOriginCallback } from './config/cors';
 import { verifyApkDownload, InvalidDownloadSignature } from './services/signedDownloads';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { closeDatabase } from './db';
@@ -26,57 +26,22 @@ const app = express();
 const server = createServer(app);
 
 // --- Allowed origins (shared between HTTP CORS and Socket.IO CORS) ---
-/**
- * Origins permitted to call the API and open a socket.
- *
- * The development branch was a hardcoded list of localhost ports that did not include
- * the dashboard's own port (5002) or any LAN address. Served from another machine —
- * which is how it is actually used — every API call and every socket connection was
- * blocked by the browser: the page loaded and nothing in it worked.
- *
- * A `CORS_ORIGIN` variable was already being set in the environment and was read by
- * nothing; the production branch looked for `ALLOWED_ORIGINS` instead. Both names are
- * accepted now so an existing deployment keeps working.
- *
- * Production still requires the list to be set explicitly — a wildcard would let any
- * site drive the fleet using an operator's logged-in session.
- */
-const configuredOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '')
-  .split(',')
-  .map(o => o.trim())
-  .filter(Boolean);
+// Policy and its reasoning live in ./config/cors, where they are unit-tested.
+const corsPolicy = buildCorsPolicy();
+const corsOrigin = corsOriginCallback(corsPolicy);
 
-const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
-  ? configuredOrigins
-  : [
-      ...configuredOrigins,
-      // Dev convenience: the dashboard's own port, on loopback and on this host's LAN
-      // address, so it works whether opened locally or from another machine.
-      'http://localhost:5002',
-      'http://127.0.0.1:5002',
-      ...localNetworkOrigins(5002),
-      'http://localhost:3000',
-      'http://localhost:5000',
-      'http://localhost:8080',
-    ];
-
-/** http://<each non-internal IPv4 of this host>:<port> */
-function localNetworkOrigins(port: number): string[] {
-  return Object.values(os.networkInterfaces())
-    .flat()
-    .filter((i): i is os.NetworkInterfaceInfo => !!i && i.family === 'IPv4' && !i.internal)
-    .map(i => `http://${i.address}:${port}`);
-}
-
-if (process.env.NODE_ENV === 'production' && ALLOWED_ORIGINS.length === 0) {
-  throw new Error(
-    'ALLOWED_ORIGINS must be set in production. Refusing to start with no CORS allowlist.'
-  );
-}
+logger.info(
+  {
+    allowedOrigins: corsPolicy.allowedOrigins,
+    privateLanAllowed: corsPolicy.privateLanAllowed,
+    dashboardPort: corsPolicy.dashboardPort,
+  },
+  'CORS allowlist resolved'
+);
 
 const io = new SocketIOServer(server, {
   cors: {
-    origin: ALLOWED_ORIGINS,
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true,
   }
@@ -89,7 +54,7 @@ import { securityHeaders, validateRequest } from './middleware/auth';
 app.use(helmet());
 app.use(securityHeaders);
 app.use(cors({
-  origin: ALLOWED_ORIGINS,
+  origin: corsOrigin,
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
