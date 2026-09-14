@@ -62,6 +62,7 @@ import {
 } from '../../types';
 import { provisioningService } from '../../services/api';
 import websocketService from '../../services/websocket';
+import StatusChip from '../../components/common/StatusChip';
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -242,22 +243,6 @@ export const ProvisioningSessionsPage: React.FC = () => {
     setAnchorEl(null);
     setMenuSession(null);
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'success';
-      case 'IN_PROGRESS':
-        return 'primary';
-      case 'FAILED':
-        return 'error';
-      case 'CANCELLED':
-        return 'default';
-      case 'PAUSED':
-        return 'warning';
-      default:
-        return 'default';
-    }
-  };
   const getProgressPercentage = (session: ProvisioningSession) => {
     if (session.totalDevices === 0) return 0;
     return Math.round((session.completedDevices / session.totalDevices) * 100);
@@ -337,11 +322,7 @@ export const ProvisioningSessionsPage: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={session.status}
-                        color={getStatusColor(session.status) as any}
-                        size="small"
-                      />
+                      <StatusChip status={session.status} />
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -431,10 +412,7 @@ export const ProvisioningSessionsPage: React.FC = () => {
           <DialogTitle>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6">{selectedSession.name}</Typography>
-              <Chip
-                label={selectedSession.status}
-                color={getStatusColor(selectedSession.status) as any}
-              />
+              <StatusChip status={selectedSession.status} />
             </Box>
           </DialogTitle>
           <DialogContent>
@@ -551,11 +529,7 @@ export const ProvisioningSessionsPage: React.FC = () => {
                 <Accordion key={progress.id}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                      <Chip
-                        label={progress.status}
-                        color={getStatusColor(progress.status) as any}
-                        size="small"
-                      />
+                      <StatusChip status={progress.status} />
                       <Typography variant="subtitle2">
                         {progress.device?.deviceId || progress.deviceId}
                       </Typography>
@@ -619,11 +593,7 @@ export const ProvisioningSessionsPage: React.FC = () => {
                         <TableCell>{progress.device?.deviceId || progress.deviceId}</TableCell>
                         <TableCell>{progress.device?.model || 'Unknown'}</TableCell>
                         <TableCell>
-                          <Chip
-                            label={progress.status}
-                            color={getStatusColor(progress.status) as any}
-                            size="small"
-                          />
+                          <StatusChip status={progress.status} />
                         </TableCell>
                         <TableCell>{progress.currentStep || 'Initializing...'}</TableCell>
                         <TableCell>

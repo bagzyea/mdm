@@ -53,6 +53,7 @@ import {
 } from '@mui/icons-material';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { provisioningService } from '../../services/api';
+import StatusChip from '../../components/common/StatusChip';
 interface DeploymentSession {
   id: string;
   profileId: string;
@@ -261,20 +262,6 @@ export const BulkDeploymentPage: React.FC = () => {
     setAnchorEl(null);
     setMenuDeployment(null);
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'success';
-      case 'IN_PROGRESS':
-        return 'primary';
-      case 'FAILED':
-        return 'error';
-      case 'CANCELLED':
-        return 'warning';
-      default:
-        return 'default';
-    }
-  };
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -336,12 +323,7 @@ export const BulkDeploymentPage: React.FC = () => {
 
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                   {getStatusIcon(deployment.status)}
-                  <Chip
-                    label={deployment.status}
-                    color={getStatusColor(deployment.status) as any}
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
+                  <StatusChip status={deployment.status} />
                 </Box>
 
                 <Box sx={{ mb: 2 }}>

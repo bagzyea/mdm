@@ -54,6 +54,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import StatusChip from '../../components/common/StatusChip';
 
 interface Command {
   id: string;
@@ -295,20 +296,6 @@ const CommandsPage: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'info';
-      case 'IN_PROGRESS':
-        return 'warning';
-      case 'COMPLETED':
-        return 'success';
-      case 'FAILED':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
 
   const formatDuration = (start: string, end?: string) => {
     const startDate = new Date(start);
@@ -557,11 +544,7 @@ const CommandsPage: React.FC = () => {
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {getStatusIcon(command.status)}
-                            <Chip
-                              label={command.status}
-                              color={getStatusColor(command.status) as any}
-                              size="small"
-                            />
+                            <StatusChip status={command.status} />
                           </Box>
                         </TableCell>
                         <TableCell>

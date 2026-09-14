@@ -57,6 +57,7 @@ import {
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService, provisioningService } from '../../services/api';
 import { ProvisioningProfile } from '../../types';
+import StatusChip from '../../components/common/StatusChip';
 interface Device {
   id: string;
   deviceId: string;
@@ -299,20 +300,6 @@ const DevicesPage: React.FC = () => {
     setSelectedDevice(null);
     setEnrollmentCode('');
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'success';
-      case 'INACTIVE':
-        return 'default';
-      case 'SUSPENDED':
-        return 'warning';
-      case 'LOST':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
   const formatLastSeen = (lastSeen: string) => {
     const now = new Date();
     const lastSeenDate = new Date(lastSeen);
@@ -511,12 +498,7 @@ const DevicesPage: React.FC = () => {
                           </Box>
                         </TableCell>
                         <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
-                          <Chip
-                            label={device.status}
-                            color={getStatusColor(device.status) as any}
-                            size="small"
-                            sx={{ fontWeight: 600, borderRadius: 1, height: 24, fontSize: '0.7rem' }}
-                          />
+                          <StatusChip status={device.status} />
                         </TableCell>
                         <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

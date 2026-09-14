@@ -49,6 +49,9 @@ import '../../styles/map.css';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import { Device, DeviceStatus } from '../../types/index';
+import StatusChip from '../../components/common/StatusChip';
+import { statusPalette } from '../../theme/statusPalette';
+import { statusTone } from '../../theme/statusVocabulary';
 
 // Fix for default markers in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -60,21 +63,9 @@ L.Icon.Default.mergeOptions({
 
 // Custom device status icons
 const createCustomIcon = (status: DeviceStatus, batteryLevel: number) => {
-  const getStatusColor = (status: DeviceStatus) => {
-    switch (status) {
-      case 'ENROLLED':
-      case 'ACTIVE':
-        return '#10b981'; // green
-      case 'INACTIVE':
-        return '#6b7280'; // gray
-      case 'SUSPENDED':
-        return '#f59e0b'; // yellow
-      case 'WIPED':
-        return '#ef4444'; // red
-      default:
-        return '#6b7280';
-    }
-  };
+  // Marker fill comes from the same vocabulary as every status chip, so a device is
+  // the same colour on the map as it is in the device list.
+  const getStatusColor = (status: DeviceStatus) => statusPalette[statusTone(status)];
   const getBatteryColor = (level: number) => {
     if (level <= 20) return '#ef4444'; // red
     if (level <= 50) return '#f59e0b'; // yellow
@@ -266,21 +257,6 @@ const MapViewPage: React.FC = () => {
     setOpenDialog(false);
     setSelectedDevice(null);
   };
-  const getStatusColor = (status: DeviceStatus) => {
-    switch (status) {
-      case 'ENROLLED':
-      case 'ACTIVE':
-        return 'success';
-      case 'INACTIVE':
-        return 'default';
-      case 'SUSPENDED':
-        return 'warning';
-      case 'WIPED':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
   const formatLastSeen = (lastSeen: string) => {
     const now = new Date();
     const lastSeenDate = new Date(lastSeen);
@@ -465,11 +441,7 @@ const MapViewPage: React.FC = () => {
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption">Status:</Typography>
-                                <Chip 
-                                  label={device.status} 
-                                  color={getStatusColor(device.status) as any}
-                                  size="small"
-                                />
+                                <StatusChip status={device.status} />
                               </Box>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption">Battery:</Typography>
@@ -556,12 +528,7 @@ const MapViewPage: React.FC = () => {
                                 {device.manufacturer} • {device.batteryLevel}%
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                <Chip 
-                                  label={device.status} 
-                                  color={getStatusColor(device.status) as any}
-                                  size="small"
-                                  sx={{ height: 18, fontSize: '0.6rem' }}
-                                />
+                                <StatusChip status={device.status} />
                                 {!device.location?.latitude && (
                                   <Chip 
                                     label="No Location" 

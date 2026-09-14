@@ -187,20 +187,6 @@ const DeviceRetirementPage: React.FC = () => {
       updateData: statusUpdateForm
     });
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'INITIATED': return 'info';
-      case 'APPROVED': return 'info';
-      case 'DATA_WIPE_PENDING': return 'warning';
-      case 'DATA_WIPED': return 'info';
-      case 'PHYSICAL_RETURN_PENDING': return 'warning';
-      case 'PHYSICAL_RETURNED': return 'info';
-      case 'DISPOSED': return 'success';
-      case 'COMPLETED': return 'success';
-      case 'CANCELLED': return 'default';
-      default: return 'default';
-    }
-  };
   if (isLoading) return <LoadingSpinner message="Loading device retirements..." />;
   return (
     <Box sx={{ p: 3 }}>
@@ -299,10 +285,7 @@ const DeviceRetirementPage: React.FC = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <StatusChip
-                      status={retirement.status}
-                      color={getStatusColor(retirement.status)}
-                    />
+                    <StatusChip status={retirement.status} />
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1 }}>

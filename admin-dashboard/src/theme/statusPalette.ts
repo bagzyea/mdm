@@ -6,12 +6,15 @@
  * floor, contrast vs surface) against the dashboard's own white chart surface, and
  * they are the first combination that passes every check:
  *
- *   good #00897b · warning #c8860d · critical #d03b3b   on #ffffff
- *     [PASS] Lightness band      all 3 inside L 0.43–0.77
- *     [PASS] Chroma floor        all 3 >= 0.1
- *     [PASS] CVD separation      worst adjacent ΔE 10.2 (deutan) · tritan 14.2
- *     [PASS] Normal-vision floor worst adjacent ΔE 17.0
- *     [PASS] Contrast vs surface all 3 >= 3:1
+ *   good #00897b · info #1f6feb · warning #c8860d · critical #d03b3b   on #ffffff
+ *     [PASS] Lightness band      all 4 inside L 0.43–0.77
+ *     [PASS] Chroma floor        all 4 >= 0.1
+ *     [PASS] CVD separation      worst all-pairs ΔE 10.2 (deutan) · tritan 4.6
+ *     [PASS] Normal-vision floor worst all-pairs ΔE 17.0
+ *     [PASS] Contrast vs surface all 4 >= 3:1
+ *
+ * Checked with `--pairs all`, not just adjacent pairs: these tones appear as isolated
+ * chips scattered down a table, so any two of them can end up side by side.
  *
  * Two findings worth keeping, because they constrain future edits:
  *
@@ -29,11 +32,14 @@
  * label — state is never carried by hue alone.
  *
  * Re-run before changing any value:
- *   node validate_palette.js "#00897b,#c8860d,#d03b3b" --mode light --surface "#ffffff"
+ *   node validate_palette.js "#00897b,#1f6feb,#c8860d,#d03b3b" \
+ *     --mode light --surface "#ffffff" --pairs all
  */
 export const statusPalette = {
   /** Reachable, healthy, succeeded. */
   good: '#00897b',
+  /** Underway — accepted and progressing, no action needed yet. */
+  info: '#1f6feb',
   /** Degraded but not failing — needs attention soon. */
   warning: '#c8860d',
   /** Failing, suspended, or unreachable. */

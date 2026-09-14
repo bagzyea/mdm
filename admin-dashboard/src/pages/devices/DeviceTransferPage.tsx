@@ -190,17 +190,6 @@ const DeviceTransferPage: React.FC = () => {
       ...(notes !== undefined ? { notes } : {}),
     });
   };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING': return 'warning';
-      case 'APPROVED': return 'info';
-      case 'IN_PROGRESS': return 'info';
-      case 'COMPLETED': return 'success';
-      case 'CANCELLED': return 'default';
-      case 'REJECTED': return 'error';
-      default: return 'default';
-    }
-  };
   if (isLoading) return <LoadingSpinner message="Loading device transfers..." />;
   return (
     <Box sx={{ p: 3 }}>
@@ -310,10 +299,7 @@ const DeviceTransferPage: React.FC = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <StatusChip
-                      status={transfer.status}
-                      color={getStatusColor(transfer.status)}
-                    />
+                    <StatusChip status={transfer.status} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">
