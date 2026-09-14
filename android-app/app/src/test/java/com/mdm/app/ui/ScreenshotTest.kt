@@ -64,3 +64,51 @@ class StatusScreenTest {
 
     @Test fun statusScreen() = paparazzi.snapshot(paparazzi.inflate(R.layout.activity_status))
 }
+
+/**
+ * Dark mode for the status screen. Worth pinning separately: the main screen's dark
+ * rendering puts a light primary-container band behind dark text, and whether the same
+ * treatment reads correctly on a screen that is mostly data rows is a different question.
+ */
+class StatusScreenDarkTest {
+    @get:Rule
+    val paparazzi = Paparazzi(
+        deviceConfig = TABLET.copy(nightMode = NightMode.NIGHT),
+        theme = "Theme.UBOSMDM",
+        renderingMode = SessionParams.RenderingMode.NORMAL
+    )
+
+    @Test fun statusScreenDark() = paparazzi.snapshot(paparazzi.inflate(R.layout.activity_status))
+}
+
+/**
+ * The app request screen — the one path by which an enumerator can ask for software
+ * rather than have it pushed. It had no visual coverage at all.
+ */
+class AppRequestScreenTest {
+    @get:Rule
+    val paparazzi = Paparazzi(
+        deviceConfig = TABLET,
+        theme = "Theme.UBOSMDM",
+        renderingMode = SessionParams.RenderingMode.NORMAL
+    )
+
+    @Test fun appRequestScreen() = paparazzi.snapshot(paparazzi.inflate(R.layout.activity_app_request))
+}
+
+/**
+ * The splash screen is the first thing a field device shows on every boot, and it is the
+ * screen most likely to be photographed and shown to a supervisor. It renders a drawable
+ * background rather than theme surfaces, so a theme change will not catch a regression
+ * here — only a snapshot will.
+ */
+class SplashScreenTest {
+    @get:Rule
+    val paparazzi = Paparazzi(
+        deviceConfig = TABLET,
+        theme = "Theme.UBOSMDM",
+        renderingMode = SessionParams.RenderingMode.NORMAL
+    )
+
+    @Test fun splashScreen() = paparazzi.snapshot(paparazzi.inflate(R.layout.activity_splash))
+}
