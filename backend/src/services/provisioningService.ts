@@ -9,6 +9,7 @@ import { definedOnly } from '../utils/prisma';
 import { signStoredApkReference } from './signedDownloads';
 import prisma from '../db';
 import logger from '../logger';
+import { refreshSessionCounters } from './provisioningOutcome';
 
 
 interface ProvisioningOptions {
@@ -238,308 +239,71 @@ export class ProvisioningService {
     }
   }
 
+  /**
+   * Send a field configuration to devices as APPLY_FIELD_CONFIGURATION.
+   *
+   * This was a simulation: it sent nothing to any device, wrote log lines such as
+   * "Configuring WiFi settings...", slept a second per section to "validate", and marked
+   * every device and the session COMPLETED. Now the configuration goes to each tablet,
+   * which applies what its privilege allows and reports every setting. The command's
+   * result settles the device's progress (see CommandService.handleCommandResponse), and
+   * the session completes only when every device has answered.
+   */
   async applyFieldConfiguration(
     sessionId: string,
     configuration: any,
     devices: any[],
-    options: {
-      parallelLimit?: number;
-      retryAttempts?: number;
-      validateBeforeApply?: boolean;
-    } = {}
+    _options: Record<string, unknown> = {}
   ) {
-    const {
-      parallelLimit = 3,
-      retryAttempts = 3,
-      validateBeforeApply = true
-    } = options;
-
     try {
-      // Update session status
       await prisma.provisioningSession.update({
         where: { id: sessionId },
-        data: {
-          status: 'IN_PROGRESS',
-          startedAt: new Date()
-        }
+        data: { status: 'IN_PROGRESS', startedAt: new Date() }
       });
 
-      // Process devices in parallel batches
-      const batches = this.createBatches(devices, parallelLimit);
+      const parameters = {
+        sessionId,
+        configurationId: configuration.id,
+        configurations: configuration.configurations ?? {},
+        dataCollectionRules: configuration.dataCollectionRules ?? null
+      };
 
-      for (const batch of batches) {
-        // Check if session is still active
-        const session = await prisma.provisioningSession.findUnique({
-          where: { id: sessionId }
-        });
-
-        if (!session || session.status === 'CANCELLED') {
-          break;
-        }
-
-        // Process batch in parallel
-        await Promise.all(
-          batch.map(device =>
-            this.applyFieldConfigurationToDevice(sessionId, device, configuration, {
-              retryAttempts,
-              validateBeforeApply
-            }).catch(error => {
-              console.error(`Error applying field configuration to device ${device.deviceId}:`, error);
-              this.updateProgress(sessionId, device.id, 'FAILED', {
-                errorMessage: error.message,
-                errorCode: 'CONFIGURATION_ERROR'
-              });
-            })
-          )
-        );
-      }
-
-      // Update session status to completed
-      await prisma.provisioningSession.update({
-        where: { id: sessionId },
-        data: {
-          status: 'COMPLETED',
-          completedAt: new Date()
-        }
-      });
-
-    } catch (error) {
-      console.error('Error in field configuration application:', error);
-      await this.handleSessionError(sessionId, error as Error);
-    }
-  }
-
-  private async applyFieldConfigurationToDevice(
-    sessionId: string,
-    device: any,
-    configuration: any,
-    options: {
-      retryAttempts: number;
-      validateBeforeApply: boolean;
-    }
-  ) {
-    const { retryAttempts, validateBeforeApply } = options;
-    let attempt = 0;
-
-    while (attempt < retryAttempts) {
-      try {
-        // Step 1: Validate device compatibility
-        if (validateBeforeApply) {
-          await this.validateDeviceForFieldConfiguration(sessionId, device, configuration);
-        }
-
-        // Step 2: Apply configurations
-        await this.updateProgress(sessionId, device.id, 'CONFIGURING_NETWORK', {
-          currentStep: 'Applying field configurations',
-          completedSteps: 0,
-          totalSteps: Object.keys(configuration.configurations).length
-        });
-
-        const configKeys = Object.keys(configuration.configurations);
-        for (let i = 0; i < configKeys.length; i++) {
-          const configKey = configKeys[i];
-          if (configKey === undefined) continue;
-          const configValue = configuration.configurations[configKey];
-
-          await this.updateProgress(sessionId, device.id, 'CONFIGURING_NETWORK', {
-            currentStep: `Applying ${configKey} configuration`,
-            completedSteps: i,
-            totalSteps: configKeys.length
-          });
-
-          // Apply specific configuration
-          await this.applyDeviceConfiguration(sessionId, device, configKey, configValue);
-
-          await this.updateProgress(sessionId, device.id, 'CONFIGURING_NETWORK', {
-            currentStep: `Applied ${configKey} configuration`,
-            completedSteps: i + 1,
-            totalSteps: configKeys.length
-          });
-        }
-
-        // Step 3: Apply data collection rules
-        if (configuration.dataCollectionRules) {
-          await this.updateProgress(sessionId, device.id, 'DEPLOYING_FILES', {
-            currentStep: 'Applying data collection rules',
-            completedSteps: configKeys.length,
-            totalSteps: configKeys.length + 1
-          });
-
-          await this.applyDataCollectionRules(sessionId, device, configuration.dataCollectionRules);
-
-          await this.updateProgress(sessionId, device.id, 'DEPLOYING_FILES', {
-            currentStep: 'Applied data collection rules',
-            completedSteps: configKeys.length + 1,
-            totalSteps: configKeys.length + 1
-          });
-        }
-
-        // Step 4: Validate configuration
-        await this.updateProgress(sessionId, device.id, 'VALIDATING', {
-          currentStep: 'Validating field configuration',
-          completedSteps: configKeys.length + (configuration.dataCollectionRules ? 1 : 0),
-          totalSteps: configKeys.length + (configuration.dataCollectionRules ? 1 : 0)
-        });
-
-        await this.validateFieldConfiguration(sessionId, device, configuration);
-
-        // Step 5: Mark as completed
-        await this.updateProgress(sessionId, device.id, 'COMPLETED', {
-          currentStep: 'Field configuration completed successfully',
-          completedSteps: configKeys.length + (configuration.dataCollectionRules ? 1 : 0),
-          totalSteps: configKeys.length + (configuration.dataCollectionRules ? 1 : 0),
-          completedAt: new Date()
-        });
-
-        break; // Success, exit retry loop
-
-      } catch (error) {
-        attempt++;
-        console.error(`Attempt ${attempt} failed for device ${device.deviceId}:`, error);
-
-        if (attempt >= retryAttempts) {
+      for (const device of devices) {
+        if (configuration.deviceModels?.length && !configuration.deviceModels.includes(device.model)) {
           await this.updateProgress(sessionId, device.id, 'FAILED', {
-            errorMessage: `Failed after ${retryAttempts} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            errorCode: 'CONFIGURATION_FAILED'
+            errorMessage: `Device model ${device.model} is not covered by this field configuration`,
+            errorCode: 'MODEL_NOT_SUPPORTED'
           });
-          throw error;
+          continue;
         }
 
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
-      }
-    }
-  }
-
-  private async validateDeviceForFieldConfiguration(sessionId: string, device: any, configuration: any) {
-    // Check if device model is supported
-    if (configuration.deviceModels && !configuration.deviceModels.includes(device.model)) {
-      throw new Error(`Device model ${device.model} is not supported by this field configuration`);
-    }
-
-    // Check device status
-    if (device.status !== 'ACTIVE' && device.status !== 'ENROLLED') {
-      throw new Error(`Device ${device.deviceId} is not in active state`);
-    }
-
-    await this.sendLog(sessionId, device.id, 'INFO', 'Device validation for field configuration passed');
-  }
-
-  private async applyDeviceConfiguration(sessionId: string, device: any, configKey: string, configValue: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', `Applying ${configKey} configuration...`);
-
-      // Apply configuration based on type
-      switch (configKey) {
-        case 'network':
-          await this.applyNetworkConfiguration(sessionId, device, configValue);
-          break;
-        case 'security':
-          await this.applySecurityConfiguration(sessionId, device, configValue);
-          break;
-        case 'applications':
-          await this.applyApplicationConfiguration(sessionId, device, configValue);
-          break;
-        case 'dataCollection':
-          await this.applyDataCollectionConfiguration(sessionId, device, configValue);
-          break;
-        default:
-          await this.sendLog(sessionId, device.id, 'WARN', `Unknown configuration type: ${configKey}`);
+        try {
+          const { commands } = await getCommandService().createCommands({
+            deviceIds: [device.id],
+            command: 'APPLY_FIELD_CONFIGURATION',
+            parameters
+          });
+          await this.updateProgress(sessionId, device.id, 'PENDING', {
+            currentStep: 'Configuration sent to device; waiting for its report',
+            logs: [{
+              timestamp: new Date(),
+              level: 'INFO',
+              message: 'APPLY_FIELD_CONFIGURATION queued',
+              details: { commandId: commands[0]?.id }
+            }]
+          });
+        } catch (error) {
+          await this.updateProgress(sessionId, device.id, 'FAILED', {
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorCode: 'COMMAND_SEND_FAILED'
+          });
+        }
       }
 
-      await this.sendLog(sessionId, device.id, 'INFO', `Applied ${configKey} configuration successfully`);
+      await refreshSessionCounters(sessionId);
     } catch (error) {
-      throw new Error(`Failed to apply ${configKey} configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  private async applyNetworkConfiguration(sessionId: string, device: any, config: any) {
-    // Apply network-specific configurations
-    if (config.wifi) {
-      // Configure WiFi settings
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring WiFi settings...');
-    }
-
-    if (config.cellular) {
-      // Configure cellular settings
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring cellular settings...');
-    }
-  }
-
-  private async applySecurityConfiguration(sessionId: string, device: any, config: any) {
-    // Apply security-specific configurations
-    if (config.encryption) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring encryption settings...');
-    }
-
-    if (config.passcode) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring passcode settings...');
-    }
-  }
-
-  private async applyApplicationConfiguration(sessionId: string, device: any, config: any) {
-    // Apply application-specific configurations
-    if (config.whitelist) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring application whitelist...');
-    }
-
-    if (config.permissions) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring application permissions...');
-    }
-  }
-
-  private async applyDataCollectionConfiguration(sessionId: string, device: any, config: any) {
-    // Apply data collection-specific configurations
-    if (config.sensors) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring sensor data collection...');
-    }
-
-    if (config.location) {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Configuring location data collection...');
-    }
-  }
-
-  private async applyDataCollectionRules(sessionId: string, device: any, rules: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Applying data collection rules...');
-
-      // Apply data collection rules
-      if (rules.samplingRate) {
-        await this.sendLog(sessionId, device.id, 'INFO', `Setting sampling rate to ${rules.samplingRate}ms`);
-      }
-
-      if (rules.storageLimit) {
-        await this.sendLog(sessionId, device.id, 'INFO', `Setting storage limit to ${rules.storageLimit}MB`);
-      }
-
-      if (rules.uploadSchedule) {
-        await this.sendLog(sessionId, device.id, 'INFO', `Setting upload schedule to ${rules.uploadSchedule}`);
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Data collection rules applied successfully');
-    } catch (error) {
-      throw new Error(`Failed to apply data collection rules: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  private async validateFieldConfiguration(sessionId: string, device: any, configuration: any) {
-    try {
-      await this.sendLog(sessionId, device.id, 'INFO', 'Validating field configuration...');
-
-      // Validate each applied configuration
-      const configKeys = Object.keys(configuration.configurations);
-      for (const configKey of configKeys) {
-        await this.sendLog(sessionId, device.id, 'INFO', `Validating ${configKey} configuration...`);
-        
-        // In real implementation, verify that configurations were applied correctly
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        await this.sendLog(sessionId, device.id, 'INFO', `${configKey} configuration validated successfully`);
-      }
-
-      await this.sendLog(sessionId, device.id, 'INFO', 'Field configuration validation completed successfully');
-    } catch (error) {
-      throw new Error(`Failed to validate field configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(error, 'Error applying field configuration');
+      await this.handleSessionError(sessionId, error as Error);
     }
   }
 

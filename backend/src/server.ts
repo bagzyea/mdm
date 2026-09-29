@@ -130,6 +130,11 @@ import { installSocketAuth, resolveDeviceId, joinIdentityRooms } from './socket/
 import { registerSocketServer, isDeviceConnected, disconnectDevice } from './socket/registry';
 import { markDeviceSeen, markDeviceOffline, sweepStaleDevices, isPresenceStatus } from './services/devicePresence';
 import { recordHeartbeat, DeviceNotAllowedError } from './services/telemetryService';
+import { recordDeviceOutcome } from './services/provisioningOutcome';
+import { ProvisioningDeviceStatus } from '@prisma/client';
+
+const isProvisioningStatus = (value: unknown): value is ProvisioningDeviceStatus =>
+  typeof value === 'string' && (Object.values(ProvisioningDeviceStatus) as string[]).includes(value);
 import { AuthService } from './services/authService';
 
 const authService = new AuthService();
@@ -507,89 +512,31 @@ io.on('connection', (socket) => {
   // Provisioning progress update from device
   socket.on('provisioningProgress', async (data: any) => {
     try {
-      const {
-        sessionId,
-        commandId,
-        step,
-        subStep,
-        completedSteps,
-        totalSteps,
-        error
-      } = data;
+      const { sessionId, step, subStep, completedSteps, totalSteps, error } = data ?? {};
 
       // Identity comes from the token, not the payload.
       const deviceIdStr = resolveDeviceId(socket, data?.deviceId);
-      if (!deviceIdStr) return;
+      if (!deviceIdStr || typeof sessionId !== 'string') return;
 
-      // Find device by deviceId string to get DB id (cuid)
       const device = await prisma.device.findUnique({
         where: { deviceId: deviceIdStr },
         select: { id: true }
       });
-
       if (!device) {
         logger.warn({ deviceId: deviceIdStr }, 'provisioningProgress: device not found');
         return;
       }
 
-      // Update ProvisioningProgress record
-      await prisma.provisioningProgress.update({
-        where: {
-          sessionId_deviceId: {
-            sessionId,
-            deviceId: device.id
-          }
-        },
-        data: {
-          status: (step as any) || 'PENDING',
-          currentStep: subStep,
-          completedSteps,
-          totalSteps,
-          errorMessage: error || null,
-          logs: {
-            push: {
-              timestamp: new Date(),
-              level: error ? 'ERROR' : 'INFO',
-              message: subStep,
-              details: { step, completedSteps, totalSteps }
-            }
-          }
-        }
+      const status = isProvisioningStatus(step) ? step : 'PENDING';
+      await recordDeviceOutcome(sessionId, device.id, {
+        status,
+        currentStep: subStep ?? null,
+        ...(typeof completedSteps === 'number' ? { completedSteps } : {}),
+        ...(typeof totalSteps === 'number' ? { totalSteps } : {}),
+        errorMessage: error || null,
+        log: { level: error ? 'ERROR' : 'INFO', message: String(subStep ?? step ?? ''), details: { step, completedSteps, totalSteps } }
       });
 
-      // If completed or failed, update device provisioning status and session counters
-      if (step === 'COMPLETED' || step === 'FAILED') {
-        const newStatus = step === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
-
-        await prisma.device.update({
-          where: { id: device.id },
-          data: { provisioningStatus: (newStatus as any) }
-        });
-
-        // Update session counters
-        const progressRecords = await prisma.provisioningProgress.findMany({
-          where: { sessionId }
-        });
-
-        const completedCount = progressRecords.filter(p => p.status === 'COMPLETED').length;
-        const failedCount = progressRecords.filter(p => p.status === 'FAILED').length;
-
-        await prisma.provisioningSession.update({
-          where: { id: sessionId },
-          data: {
-            completedDevices: completedCount,
-            failedDevices: failedCount,
-            status:
-              failedCount > 0
-                ? 'FAILED'
-                : completedCount === progressRecords.length
-                ? 'COMPLETED'
-                : 'IN_PROGRESS'
-          }
-        });
-      }
-
-      // Broadcast update to admin dashboard
       io.to('admins').emit('provisioningProgressUpdate', {
         sessionId,
         deviceId: deviceIdStr,

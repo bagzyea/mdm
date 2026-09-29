@@ -23,6 +23,7 @@ class PreferenceManager private constructor(private val context: Context) : Toke
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEVICE_TOKEN = "device_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
+        private const val KEY_DATA_COLLECTION_RULES = "data_collection_rules"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_IS_ENROLLED = "is_enrolled"
         private const val KEY_LAST_HEARTBEAT = "last_heartbeat"
@@ -71,6 +72,10 @@ class PreferenceManager private constructor(private val context: Context) : Toke
     // Refresh token — renews the short-lived device token (see api/TokenRefresher.kt)
     override fun getRefreshToken(): String? = sharedPrefs.getString(KEY_REFRESH_TOKEN, null)
     fun setRefreshToken(token: String) = sharedPrefs.edit().putString(KEY_REFRESH_TOKEN, token).apply()
+
+    // Data-collection rules from the last applied field configuration (JSON)
+    fun getDataCollectionRules(): String? = sharedPrefs.getString(KEY_DATA_COLLECTION_RULES, null)
+    fun setDataCollectionRules(json: String) = sharedPrefs.edit().putString(KEY_DATA_COLLECTION_RULES, json).apply()
     
     // Server URL
     fun getServerUrl(): String? = sharedPrefs.getString(KEY_SERVER_URL, null)

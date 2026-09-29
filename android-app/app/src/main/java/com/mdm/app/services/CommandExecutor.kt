@@ -8,6 +8,8 @@ import com.mdm.app.admin.MDMDeviceAdminReceiver
 import com.mdm.app.api.ApiClient
 import com.mdm.app.models.CommandResult
 import com.mdm.app.policy.DevicePrivilege
+import com.mdm.app.policy.FieldConfiguration
+import com.mdm.app.policy.PolicyStatus
 import com.mdm.app.policy.PolicyEngine
 import com.mdm.app.policy.PrivilegeLevel
 import com.mdm.app.utils.LocationResolver
@@ -111,6 +113,7 @@ class CommandExecutor(
         "SYNC_SETTINGS" -> syncSettings()
         "RESTART_SERVICES" -> restartServices()
         "PROVISION_DEVICE" -> provision(commandId, payload)
+        "APPLY_FIELD_CONFIGURATION" -> applyFieldConfiguration(payload)
         else -> Outcome.failure("Unknown command type: $commandType")
     }
 
@@ -210,6 +213,51 @@ class CommandExecutor(
     private suspend fun applyPolicies(): Outcome {
         mdmService.updatePolicies()
         return Outcome.success(mapOf("policiesRefreshed" to true))
+    }
+
+    /**
+     * Apply a field configuration and report every setting. See [FieldConfiguration].
+     *
+     * The command succeeds only if every setting was applied. Otherwise the result names
+     * what was not, and why — typically "requires Device Owner" while the agent runs as
+     * a Device Admin — so the operator sees exactly how much of the configuration took.
+     */
+    private suspend fun applyFieldConfiguration(payload: JSONObject?): Outcome {
+        val configurationId = payload?.optString("configurationId").orEmpty().ifEmpty { "field-config" }
+        val plan = FieldConfiguration.plan(
+            configurationId,
+            FieldConfiguration.toMap(payload?.optJSONObject("configurations"))
+        )
+        val results = policyEngine.applyPolicies(plan.policies).results
+
+        // Data-collection rules are stored on the device for the data-collection apps;
+        // the agent itself does not act on them.
+        val rules = payload?.optJSONObject("dataCollectionRules")
+        if (rules != null) preferenceManager.setDataCollectionRules(rules.toString())
+
+        val report = FieldConfiguration.report(plan, results)
+        val applied = report.count { it.status == PolicyStatus.SUCCESS }
+        val notApplied = report.filter { it.status != PolicyStatus.SUCCESS }
+        val data = mapOf(
+            "sessionId" to payload?.optString("sessionId"),
+            "applied" to applied,
+            "total" to report.size,
+            "dataCollectionRulesStored" to (rules != null),
+            "settings" to report.map {
+                mapOf("setting" to it.setting, "status" to it.status.name, "message" to it.message)
+            }
+        )
+
+        return if (notApplied.isEmpty()) {
+            Outcome.success(data)
+        } else {
+            Outcome(
+                success = false,
+                data = data,
+                error = "Applied $applied of ${report.size} settings. Not applied: " +
+                    notApplied.joinToString("; ") { "${it.setting} (${it.message ?: it.status.name.lowercase()})" }
+            )
+        }
     }
 
     private suspend fun syncSettings(): Outcome {

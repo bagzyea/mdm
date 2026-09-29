@@ -7,6 +7,7 @@ import { deviceRoom } from '../socket/registry';
 import { isAgentCommand } from '@mdm/shared-types';
 import { Prisma, RemoteCommand } from '@prisma/client';
 import { isRevoked } from './devicePresence';
+import { recordDeviceOutcome } from './provisioningOutcome';
 
 /** The command is not one the agent implements, so queueing it could only fail. */
 export class UnsupportedCommandError extends Error {
@@ -282,6 +283,25 @@ export class CommandService {
           } as any
         }
       });
+
+      // A field configuration's session is settled by the command's own result, which
+      // reaches us over HTTP as well as the socket — so it works for offline tablets.
+      const sessionId = (command.parameters as { sessionId?: unknown } | null)?.sessionId;
+      if (command.command === 'APPLY_FIELD_CONFIGURATION' && typeof sessionId === 'string') {
+        const data = result.data as { applied?: number; total?: number } | undefined;
+        await recordDeviceOutcome(sessionId, command.deviceId, {
+          status: result.success ? 'COMPLETED' : 'FAILED',
+          currentStep: result.success ? 'Field configuration applied' : 'Field configuration not fully applied',
+          ...(typeof data?.applied === 'number' ? { completedSteps: data.applied } : {}),
+          ...(typeof data?.total === 'number' ? { totalSteps: data.total } : {}),
+          errorMessage: result.success ? null : result.message ?? 'Device reported failure',
+          log: {
+            level: result.success ? 'INFO' : 'WARN',
+            message: result.success ? 'All settings applied' : result.message ?? 'Not all settings applied',
+            details: result.data
+          }
+        });
+      }
 
       // Emit to admin dashboard only — not all sockets (Fix 1.4)
       this.io.to('admins').emit('commandUpdate', {

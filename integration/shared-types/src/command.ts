@@ -45,6 +45,7 @@ export const AGENT_COMMANDS = [
   'SYNC_SETTINGS',
   'RESTART_SERVICES',
   'PROVISION_DEVICE',
+  'APPLY_FIELD_CONFIGURATION',
 ] as const;
 
 export type CommandType = (typeof AGENT_COMMANDS)[number];
