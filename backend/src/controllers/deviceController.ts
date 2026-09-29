@@ -11,6 +11,11 @@ import {
   revokeDeviceTokens,
   EnrollmentError,
 } from '../services/enrollmentService';
+import { REVOKED_STATUSES } from '../services/devicePresence';
+import { recordHeartbeat, DeviceNotAllowedError } from '../services/telemetryService';
+import { disconnectDevice } from '../socket/registry';
+import { serializeDevice } from '../utils/serialize';
+import logger from '../logger';
 
 
 export const getAllDevices = async (req: Request, res: Response) => {
@@ -63,13 +68,7 @@ export const getAllDevices = async (req: Request, res: Response) => {
     });
     
     // Convert BigInt values to strings for JSON serialization
-    const devicesResponse = devices.map(device => ({
-      ...device,
-      totalStorage: device.totalStorage ? device.totalStorage.toString() : null,
-      availableStorage: device.availableStorage ? device.availableStorage.toString() : null,
-      totalRAM: device.totalRAM ? device.totalRAM.toString() : null,
-      availableRAM: device.availableRAM ? device.availableRAM.toString() : null,
-    }));
+    const devicesResponse = devices.map((device) => serializeDevice(device));
     
     // Return paginated response
     const totalPages = Math.ceil(totalCount / limit);
@@ -108,13 +107,7 @@ export const getDevice = async (req: Request<{ deviceId: string }>, res: Respons
     }
     
     // Convert BigInt values to strings for JSON serialization
-    const deviceResponse = {
-      ...device,
-      totalStorage: device.totalStorage ? device.totalStorage.toString() : null,
-      availableStorage: device.availableStorage ? device.availableStorage.toString() : null,
-      totalRAM: device.totalRAM ? device.totalRAM.toString() : null,
-      availableRAM: device.availableRAM ? device.availableRAM.toString() : null,
-    };
+    const deviceResponse = serializeDevice(device);
     
     res.json(deviceResponse);
   } catch (error) {
@@ -416,52 +409,64 @@ export const sendCommand = async (req: Request<{ deviceId: string }>, res: Respo
   }
 };
 
+/**
+ * Administrative status change (the dashboard's suspend / reactivate).
+ *
+ * Suspending or wiping takes effect immediately: the device's refresh tokens are revoked
+ * and its sockets are closed. Previously the new status was only consulted at the next
+ * token refresh, and the device's own heartbeats overwrote it back to ACTIVE before then.
+ *
+ * This is an operator action, so it no longer bumps `lastSeen` or logs a HEARTBEAT event —
+ * that made a device suspended while offline look as if it had just checked in.
+ */
 export const updateDeviceStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
     const { status, location, batteryLevel, isCharging, networkInfo } = req.body;
-    
-    const updateData: any = {
-      lastSeen: new Date()
-    };
-    
+
+    const existing = await prisma.device.findUnique({
+      where: { deviceId },
+      select: { status: true }
+    });
+    if (!existing) {
+      res.status(404).json({ error: 'Device not found' });
+      return;
+    }
+
+    const updateData: any = {};
     if (status) updateData.status = status;
     if (location) updateData.location = location;
     if (batteryLevel !== undefined) updateData.batteryLevel = batteryLevel;
     if (isCharging !== undefined) updateData.isCharging = isCharging;
     if (networkInfo) updateData.networkInfo = networkInfo;
-    
+
     const device = await prisma.device.update({
       where: { deviceId },
       data: updateData
     });
-    
-    // Log heartbeat/status update event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: device.id,
-        eventType: 'HEARTBEAT',
-        eventData: {
-          batteryLevel,
-          isCharging,
-          location: location ? { lat: location.latitude, lng: location.longitude } : null,
-          timestamp: new Date()
+
+    if (status && REVOKED_STATUSES.includes(status)) {
+      await revokeDeviceTokens(deviceId, req.user?.userId || `device-${status.toLowerCase()}`);
+      disconnectDevice(deviceId, 'This device is no longer permitted to connect');
+    }
+
+    if (status && status !== existing.status) {
+      await prisma.deviceEvent.create({
+        data: {
+          deviceId: device.id,
+          eventType: 'STATUS_CHANGED',
+          eventData: {
+            oldStatus: existing.status,
+            newStatus: status,
+            changedBy: req.user?.userId ?? null
+          }
         }
-      }
-    });
+      });
+    }
 
-    // Convert BigInt values to strings for JSON serialization
-    const deviceResponse = {
-      ...device,
-      totalStorage: device.totalStorage ? device.totalStorage.toString() : null,
-      availableStorage: device.availableStorage ? device.availableStorage.toString() : null,
-      totalRAM: device.totalRAM ? device.totalRAM.toString() : null,
-      availableRAM: device.availableRAM ? device.availableRAM.toString() : null,
-    };
-
-    res.json({ success: true, device: deviceResponse, message: 'Heartbeat received successfully' });
+    res.json({ success: true, device: serializeDevice(device), message: 'Device status updated' });
   } catch (error) {
-    console.error('Error updating device status:', error);
+    logger.error(error, 'Error updating device status');
     res.status(500).json({ error: 'Failed to update device status' });
   }
 };
@@ -469,59 +474,20 @@ export const updateDeviceStatus = async (req: Request<{ deviceId: string }>, res
 export const deviceHeartbeat = async (req: Request<{ deviceId: string }>, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const { batteryLevel, isCharging, location, networkInfo, systemHealth } = req.body;
-    
-    // Update device with heartbeat data
-    const updateData: any = {
-      lastSeen: new Date(),
-      status: 'ACTIVE'
-    };
-    
-    if (batteryLevel !== undefined) updateData.batteryLevel = batteryLevel;
-    if (isCharging !== undefined) updateData.isCharging = isCharging;
-    if (location) updateData.location = location;
-    if (networkInfo) updateData.networkInfo = networkInfo;
-    
-    const device = await prisma.device.update({
-      where: { deviceId },
-      data: updateData
-    });
-    
-    // Log heartbeat event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: device.id,
-        eventType: 'HEARTBEAT',
-        eventData: { 
-          batteryLevel,
-          isCharging,
-          location: location ? { lat: location.latitude, lng: location.longitude } : null,
-          networkInfo,
-          systemHealth,
-          timestamp: new Date()
-        }
-      }
-    });
-    
-    // Check for pending commands
-    const pendingCommands = await prisma.remoteCommand.findMany({
-      where: { 
-        device: { deviceId },
-        status: 'PENDING'
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 10 // Limit to prevent overwhelming the device
-    });
-    
-    res.json({ 
-      success: true, 
+    const { pendingCommands, nextHeartbeatMs } = await recordHeartbeat(deviceId, req.body);
+
+    res.json({
+      success: true,
       message: 'Heartbeat processed successfully',
-      pendingCommands: pendingCommands.length,
-      nextHeartbeat: new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
+      pendingCommands,
+      nextHeartbeat: new Date(Date.now() + nextHeartbeatMs).toISOString()
     });
-    
   } catch (error) {
-    console.error('Error processing device heartbeat:', error);
+    if (error instanceof DeviceNotAllowedError) {
+      res.status(403).json({ error: error.message, code: 'DEVICE_REVOKED' });
+      return;
+    }
+    logger.error(error, 'Error processing device heartbeat');
     res.status(500).json({ error: 'Failed to process heartbeat' });
   }
 };
@@ -567,13 +533,7 @@ export const updateDeviceAnalytics = async (req: Request<{ deviceId: string }>, 
     });
     
     // Convert BigInt values to strings for JSON serialization
-    const deviceResponse = {
-      ...updatedDevice,
-      totalStorage: updatedDevice.totalStorage ? updatedDevice.totalStorage.toString() : null,
-      availableStorage: updatedDevice.availableStorage ? updatedDevice.availableStorage.toString() : null,
-      totalRAM: updatedDevice.totalRAM ? updatedDevice.totalRAM.toString() : null,
-      availableRAM: updatedDevice.availableRAM ? updatedDevice.availableRAM.toString() : null,
-    };
+    const deviceResponse = serializeDevice(updatedDevice);
     
     res.json(deviceResponse);
   } catch (error) {
@@ -624,13 +584,7 @@ export const getDeviceAnalytics = async (req: Request<{ deviceId: string }>, res
     });
     
     // Convert BigInt values to strings for JSON serialization
-    const deviceResponse = {
-      ...device,
-      totalStorage: device.totalStorage ? device.totalStorage.toString() : null,
-      availableStorage: device.availableStorage ? device.availableStorage.toString() : null,
-      totalRAM: device.totalRAM ? device.totalRAM.toString() : null,
-      availableRAM: device.availableRAM ? device.availableRAM.toString() : null,
-    };
+    const deviceResponse = serializeDevice(device);
 
     res.json({
       current: deviceResponse,

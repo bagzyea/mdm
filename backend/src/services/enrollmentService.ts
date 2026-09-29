@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import config from '../config/env';
 import prisma from '../db';
+import { isRevoked } from './devicePresence';
 
 /**
  * Device enrollment and credential lifecycle (findings F-02, F-13).
@@ -24,8 +25,6 @@ import prisma from '../db';
  */
 
 
-/** Device statuses that must not be able to obtain or refresh a credential. */
-const REVOKED_DEVICE_STATUSES = new Set(['WIPED', 'SUSPENDED']);
 
 export class EnrollmentError extends Error {
   constructor(
@@ -287,7 +286,7 @@ export async function refreshDeviceCredentials(
     throw new EnrollmentError('Device is no longer enrolled', 'DEVICE_NOT_ENROLLED', 401);
   }
 
-  if (device.isRetired || REVOKED_DEVICE_STATUSES.has(device.status)) {
+  if (isRevoked(device)) {
     await revokeDeviceTokens(record.deviceId, `device-${device.status.toLowerCase()}`);
     throw new EnrollmentError(
       'This device is no longer permitted to connect',

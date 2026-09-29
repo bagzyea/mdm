@@ -1,6 +1,8 @@
 import type { Server as SocketIOServer, Socket } from 'socket.io';
 import { AuthService } from '../services/authService';
+import { getDeviceAccess, DeviceAccess } from '../services/devicePresence';
 import logger from '../logger';
+import { deviceRoom } from './registry';
 
 /**
  * Socket.IO authentication (finding F-03).
@@ -26,15 +28,30 @@ import logger from '../logger';
 
 const authService = new AuthService();
 
+export interface SocketAuthOptions {
+  authService?: AuthService;
+  /** Looks up whether a device may connect. Defaults to the database check. */
+  deviceAccess?: (deviceId: string) => Promise<DeviceAccess>;
+}
+
 /**
  * Handshake middleware. Establishes the socket's identity once, from the signed token,
  * and pins it onto `socket.data` where the client cannot influence it. A connection
  * without a valid token is refused outright.
+ *
+ * A device token is also checked against the device's current state. A valid signature
+ * is not enough: an access token outlives an administrator suspending, wiping or
+ * retiring the device, and before this check such a device could keep connecting — and
+ * its heartbeats marked it ACTIVE again — until the token expired.
  */
-export function createSocketAuthMiddleware(authServiceOverride?: AuthService) {
-  const service = authServiceOverride ?? authService;
+export function createSocketAuthMiddleware(options: SocketAuthOptions = {}) {
+  const service = options.authService ?? authService;
+  const deviceAccess = options.deviceAccess ?? getDeviceAccess;
 
-  return function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void): void {
+  return async function socketAuthMiddleware(
+    socket: Socket,
+    next: (err?: Error) => void
+  ): Promise<void> {
     const handshakeToken = socket.handshake.auth?.token;
     const headerToken = socket.handshake.headers?.authorization?.split(' ')[1];
     const token = typeof handshakeToken === 'string' ? handshakeToken : headerToken;
@@ -55,12 +72,28 @@ export function createSocketAuthMiddleware(authServiceOverride?: AuthService) {
         // source of a socket's device identity from here on — never the event payload.
         socket.data.deviceId = decoded.userId;
       }
-
-      return next();
     } catch {
       logger.warn({ socketId: socket.id }, 'Socket rejected: invalid token');
       return next(new Error('AUTHENTICATION_FAILED'));
     }
+
+    if (socket.data.deviceId) {
+      try {
+        const access = await deviceAccess(socket.data.deviceId);
+        if (access !== 'allowed') {
+          logger.warn(
+            { socketId: socket.id, deviceId: socket.data.deviceId, access },
+            'Socket rejected: device is not permitted to connect'
+          );
+          return next(new Error('DEVICE_REVOKED'));
+        }
+      } catch (error) {
+        logger.error(error, 'Socket rejected: device access check failed');
+        return next(new Error('AUTHENTICATION_FAILED'));
+      }
+    }
+
+    return next();
   };
 }
 
@@ -98,13 +131,13 @@ export function resolveDeviceId(socket: Socket, claimedDeviceId?: unknown): stri
  */
 export function joinIdentityRooms(socket: Socket): void {
   if (socket.data.role === 'DEVICE') {
-    socket.join(`device_${socket.data.deviceId}`);
+    socket.join(deviceRoom(socket.data.deviceId));
   } else {
     socket.join('admins');
   }
 }
 
 /** Install handshake authentication on a Socket.IO server. */
-export function installSocketAuth(io: SocketIOServer, authServiceOverride?: AuthService): void {
-  io.use(createSocketAuthMiddleware(authServiceOverride));
+export function installSocketAuth(io: SocketIOServer, options?: SocketAuthOptions): void {
+  io.use(createSocketAuthMiddleware(options));
 }

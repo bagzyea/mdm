@@ -21,6 +21,15 @@ import * as jwt from 'jsonwebtoken';
 
 import config from '../config/env';
 import { installSocketAuth, resolveDeviceId, joinIdentityRooms } from '../socket/auth';
+import type { DeviceAccess } from '../services/devicePresence';
+
+/**
+ * Device state as the handshake sees it. Unlisted devices are allowed, so the identity
+ * tests below need no setup; the revocation tests list the devices they suspend.
+ */
+const deviceStates = new Map<string, DeviceAccess>();
+const deviceAccess = async (deviceId: string): Promise<DeviceAccess> =>
+  deviceStates.get(deviceId) ?? 'allowed';
 
 const ISSUER = 'mdm-system';
 const AUDIENCE = 'mdm-users';
@@ -61,7 +70,7 @@ function buildServer(): { httpServer: HttpServer; io: SocketIOServer; received: 
   const io = new SocketIOServer(httpServer);
   const received: any[] = [];
 
-  installSocketAuth(io);
+  installSocketAuth(io, { deviceAccess });
 
   io.on('connection', (socket) => {
     joinIdentityRooms(socket);
@@ -104,6 +113,7 @@ describe('Socket.IO handshake authentication (F-03 regression)', () => {
 
   afterEach(() => {
     received.length = 0;
+    deviceStates.clear();
   });
 
   /** Connect a client and resolve on success or reject with the handshake error. */
@@ -211,5 +221,21 @@ describe('Socket.IO handshake authentication (F-03 regression)', () => {
     });
 
     expect(rooms).toEqual(['admins']);
+  });
+
+  it('refuses a correctly signed token for a suspended device', async () => {
+    // A valid signature is not enough: the token outlives the administrator's decision.
+    deviceStates.set('device-suspended', 'revoked');
+    await expect(connect({ token: deviceToken('device-suspended') })).rejects.toThrow('DEVICE_REVOKED');
+  });
+
+  it('refuses a token for a device that no longer exists', async () => {
+    deviceStates.set('device-deleted', 'unknown');
+    await expect(connect({ token: deviceToken('device-deleted') })).rejects.toThrow('DEVICE_REVOKED');
+  });
+
+  it('does not consult device state for an admin token', async () => {
+    deviceStates.set('admin-1', 'revoked');
+    await expect(connect({ token: adminToken() })).resolves.toBeDefined();
   });
 });

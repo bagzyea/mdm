@@ -15,6 +15,7 @@ import { verifyApkDownload, InvalidDownloadSignature } from './services/signedDo
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { closeDatabase } from './db';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
+import { Prisma } from '@prisma/client';
 
 // Load environment variables
 dotenv.config();
@@ -125,6 +126,9 @@ import apkRegistryRoutes from './routes/apkRegistryRoutes';
 // Import authentication middleware
 import { authenticateToken } from './middleware/auth';
 import { installSocketAuth, resolveDeviceId, joinIdentityRooms } from './socket/auth';
+import { registerSocketServer, isDeviceConnected, disconnectDevice } from './socket/registry';
+import { markDeviceSeen, markDeviceOffline, sweepStaleDevices, isPresenceStatus } from './services/devicePresence';
+import { recordHeartbeat, DeviceNotAllowedError } from './services/telemetryService';
 import { AuthService } from './services/authService';
 
 const authService = new AuthService();
@@ -209,46 +213,30 @@ const commandQueueTimer = setInterval(() => {
   commandService.processCommandQueue();
 }, 30000);
 
-// Device heartbeat monitoring - mark devices as inactive if no heartbeat
+// Device heartbeat monitoring - mark devices as inactive if no heartbeat.
+// Suspended and wiped devices are left alone: see src/services/devicePresence.ts.
 const heartbeatMonitorTimer = setInterval(async () => {
   try {
-    const inactiveThreshold = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes
+    const staleDevices = await sweepStaleDevices();
 
-    // Fetch devices about to go stale so we can send per-device email alerts
-    const aboutToGoStale = await prisma.device.findMany({
-      where: {
-        lastSeen: { lt: inactiveThreshold },
-        status: { not: 'INACTIVE' }
-      },
-      select: { deviceId: true, lastSeen: true }
-    });
-
-    const staleDevices = await prisma.device.updateMany({
-      where: {
-        lastSeen: { lt: inactiveThreshold },
-        status: { not: 'INACTIVE' }
-      },
-      data: { status: 'INACTIVE' }
-    });
-
-    if (staleDevices.count > 0) {
-      logger.info({ count: staleDevices.count }, 'Marked devices as inactive due to missing heartbeat');
+    if (staleDevices.length > 0) {
+      logger.info({ count: staleDevices.length }, 'Marked devices as inactive due to missing heartbeat');
 
       // Notify admin dashboard only — NOT all sockets (Fix 1.4)
       io.to('admins').emit('deviceStatusChanged', {
         type: 'BULK_STATUS_UPDATE',
-        message: `${staleDevices.count} devices marked as inactive`,
+        message: `${staleDevices.length} devices marked as inactive`,
         timestamp: new Date()
       });
 
       // Emit deviceOffline event for the notification system
       io.to('admins').emit('deviceOffline', {
-        count: staleDevices.count,
+        count: staleDevices.length,
         timestamp: new Date()
       });
 
-      // Send email alerts for each newly-offline device (2.6)
-      for (const device of aboutToGoStale) {
+      // Email alerts for exactly the devices this sweep moved (2.6)
+      for (const device of staleDevices) {
         notificationService.sendDeviceOfflineAlert(device.deviceId, device.lastSeen);
       }
     }
@@ -296,6 +284,18 @@ if (process.env.NODE_ENV === 'test') {
 // WebSocket handshake authentication and device-identity pinning (finding F-03).
 // Implemented in src/socket/auth.ts so the tests exercise the same code the server runs.
 installSocketAuth(io);
+registerSocketServer(io);
+
+/**
+ * Drop a device socket that is no longer allowed to act (suspended, wiped, retired or
+ * deleted since it connected). Returns true when the socket was dropped.
+ */
+function refuseIfRevoked(error: unknown, deviceId: string): boolean {
+  if (!(error instanceof DeviceNotAllowedError)) return false;
+  logger.warn({ deviceId }, 'Device is no longer permitted to connect; disconnecting');
+  disconnectDevice(deviceId, 'This device is no longer permitted to connect');
+  return true;
+}
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
@@ -307,15 +307,9 @@ io.on('connection', (socket) => {
   // Room membership follows from the authenticated identity, not from a client event.
   joinIdentityRooms(socket);
 
-  // Catch-all handler for custom events (handles deviceIdentify and other custom events)
-  socket.onAny((event: string, ...args: any[]) => {
-    console.log('[SOCKET] onAny event:', event, 'from socket:', socket.id);
-    if (event === 'deviceIdentify') {
-      console.log('[SOCKET] deviceIdentify caught by onAny, will be handled by specific listener');
-      // This will be handled by the deviceIdentify listener below
-      return;
-    }
-    logger.debug({ event, args }, 'Received custom event');
+  // Event names only: payloads carry locations and tokens and are not logged.
+  socket.onAny((event: string) => {
+    logger.debug({ event, socketId: socket.id }, 'Socket event received');
   });
 
   // Retained for dashboard compatibility: the client emits adminConnect after
@@ -340,14 +334,10 @@ io.on('connection', (socket) => {
     if (!deviceId) return;
 
     try {
-      // Update device status and last seen
-      await prisma.device.update({
-        where: { deviceId },
-        data: {
-          status: 'ACTIVE',
-          lastSeen: new Date()
-        }
-      });
+      if (!(await markDeviceSeen(deviceId))) {
+        refuseIfRevoked(new DeviceNotAllowedError(deviceId), deviceId);
+        return;
+      }
 
       // Check for pending commands
       const pendingCommands = await prisma.remoteCommand.findMany({
@@ -385,39 +375,8 @@ io.on('connection', (socket) => {
       messageData.deviceId = deviceId;
 
       if (messageData.type === 'heartbeat') {
-        console.log('[MESSAGE] Processing as heartbeat');
-        // Convert message format to deviceHeartbeat format
-        const heartbeatData: DeviceHeartbeatData = {
-          deviceId: messageData.deviceId,
-          batteryLevel: messageData.batteryLevel,
-          isCharging: messageData.isCharging,
-          location: messageData.location
-        };
-        // Continue processing as heartbeat (see deviceHeartbeat handler below)
-        const updateData: Record<string, unknown> = {
-          lastSeen: new Date(),
-          status: 'ACTIVE'
-        };
-        if (heartbeatData.batteryLevel !== undefined) updateData.batteryLevel = heartbeatData.batteryLevel;
-        if (heartbeatData.isCharging !== undefined) updateData.isCharging = heartbeatData.isCharging;
-        if (heartbeatData.location) updateData.location = heartbeatData.location;
-
-        const device = await prisma.device.update({
-          where: { deviceId: heartbeatData.deviceId },
-          data: updateData as any
-        });
-
-        console.log('[MESSAGE] Updated device:', device.deviceId, 'to ACTIVE');
-        io.to('admins').emit('deviceHeartbeat', {
-          deviceId: heartbeatData.deviceId,
-          batteryLevel: heartbeatData.batteryLevel,
-          isCharging: heartbeatData.isCharging,
-          location: heartbeatData.location,
-          lastSeen: new Date(),
-          status: 'ACTIVE'
-        });
+        await recordHeartbeat(deviceId, messageData);
       } else if (messageData.type === 'command_result') {
-        console.log('[MESSAGE] Processing command result for deviceId:', messageData.deviceId);
         // Handle command result from device
         await commandService.handleCommandResponse(
           messageData.deviceId,
@@ -431,7 +390,8 @@ io.on('connection', (socket) => {
         );
       }
     } catch (error) {
-      console.error('[MESSAGE] Error processing message:', error);
+      if (refuseIfRevoked(error, socket.data.deviceId)) return;
+      logger.error(error, 'Error processing device message');
     }
   });
 
@@ -439,81 +399,16 @@ io.on('connection', (socket) => {
   socket.on('deviceHeartbeat', async (data: DeviceHeartbeatData) => {
     const deviceId = resolveDeviceId(socket, data?.deviceId);
     if (!deviceId) return;
-    data = { ...data, deviceId };
 
     try {
-      const updateData: Record<string, unknown> = {
-        lastSeen: new Date(),
-        status: 'ACTIVE'
-      };
-
-      // Update device metrics
-      if (data.batteryLevel !== undefined) updateData.batteryLevel = data.batteryLevel;
-      if (data.isCharging !== undefined) updateData.isCharging = data.isCharging;
-      if (data.location) updateData.location = data.location;
-      if (data.networkInfo) updateData.networkInfo = data.networkInfo;
-      if (data.systemHealth) updateData.systemHealth = data.systemHealth;
-      if (data.appUsage) updateData.appUsageStats = data.appUsage;
-      if (data.storageInfo) {
-        updateData.totalStorage = BigInt(data.storageInfo.total);
-        updateData.availableStorage = BigInt(data.storageInfo.available);
-      }
-      if (data.memoryInfo) {
-        updateData.totalRAM = BigInt(data.memoryInfo.total);
-        updateData.availableRAM = BigInt(data.memoryInfo.available);
-      }
-
-      const device = await prisma.device.update({
-        where: { deviceId: data.deviceId },
-        data: updateData as any
-      });
-
-      // Log heartbeat event (use DB id, not string deviceId)
-      await prisma.deviceEvent.create({
-        data: {
-          deviceId: device.id,
-          eventType: 'HEARTBEAT',
-          eventData: {
-            batteryLevel: data.batteryLevel,
-            isCharging: data.isCharging,
-            storageInfo: data.storageInfo,
-            memoryInfo: data.memoryInfo,
-            timestamp: new Date()
-          } as any
-        }
-      });
-
-      // Broadcast real-time update to admin dashboard ONLY (Fix 1.4)
-      io.to('admins').emit('deviceHeartbeat', {
-        deviceId: data.deviceId,
-        batteryLevel: data.batteryLevel,
-        isCharging: data.isCharging,
-        location: data.location,
-        networkInfo: data.networkInfo,
-        systemHealth: data.systemHealth,
-        storageInfo: data.storageInfo,
-        memoryInfo: data.memoryInfo,
-        lastSeen: new Date(),
-        status: 'ACTIVE'
-      });
-
-      // Send response with pending commands
-      const pendingCommands = await prisma.remoteCommand.findMany({
-        where: {
-          device: { deviceId: data.deviceId },
-          status: 'PENDING'
-        },
-        orderBy: { createdAt: 'asc' },
-        take: 5
-      });
-
+      const { pendingCommands, nextHeartbeatMs } = await recordHeartbeat(deviceId, data);
       socket.emit('heartbeatResponse', {
         success: true,
-        pendingCommands: pendingCommands.length,
-        nextHeartbeat: 30000 // 30 seconds
+        pendingCommands,
+        nextHeartbeat: nextHeartbeatMs
       });
-
     } catch (error) {
+      if (refuseIfRevoked(error, deviceId)) return;
       logger.error(error, 'Error updating device heartbeat');
       socket.emit('heartbeatResponse', {
         success: false,
@@ -558,14 +453,18 @@ io.on('connection', (socket) => {
 
       const oldStatus = existingDevice.status;
 
-      await prisma.device.update({
-        where: { deviceId: data.deviceId },
-        data: {
-          status: data.status as any,
-          location: data.location as any,
-          lastSeen: new Date()
-        }
-      });
+      // A device may only report presence. Lifecycle statuses (SUSPENDED, WIPED) are an
+      // administrator's decision, and a device claiming one is ignored rather than obeyed.
+      const reportedStatus = isPresenceStatus(data.status) ? data.status : 'ACTIVE';
+      const seen = await markDeviceSeen(
+        deviceId,
+        data.location ? { location: data.location as unknown as Prisma.InputJsonValue } : {},
+        reportedStatus
+      );
+      if (!seen) {
+        refuseIfRevoked(new DeviceNotAllowedError(deviceId), deviceId);
+        return;
+      }
 
       // Log status change event — use DB id (existingDevice.id) not string deviceId
       await prisma.deviceEvent.create({
@@ -574,7 +473,7 @@ io.on('connection', (socket) => {
           eventType: 'STATUS_UPDATE',
           eventData: {
             oldStatus,                  // real old status captured above
-            newStatus: data.status,
+            newStatus: reportedStatus,
             additionalData: {
               batteryLevel: data.batteryLevel,
               networkInfo: data.networkInfo
@@ -586,7 +485,7 @@ io.on('connection', (socket) => {
       // Notify admin dashboard only (Fix 1.4)
       io.to('admins').emit('deviceStatusChanged', {
         deviceId: data.deviceId,
-        status: data.status,
+        status: reportedStatus,
         timestamp: new Date(),
         additionalData: {
           batteryLevel: data.batteryLevel,
@@ -708,10 +607,10 @@ io.on('connection', (socket) => {
     // Update device status to INACTIVE if it was a device connection
     if (deviceId) {
       try {
-        await prisma.device.update({
-          where: { deviceId },
-          data: { status: 'INACTIVE' }
-        });
+        // A reconnecting agent often opens its new socket before the old one's
+        // disconnect arrives; don't mark it offline while it is still connected.
+        if (await isDeviceConnected(deviceId)) return;
+        if (!(await markDeviceOffline(deviceId))) return;
 
         // Notify admin dashboard only
         io.to('admins').emit('deviceStatusChanged', {
