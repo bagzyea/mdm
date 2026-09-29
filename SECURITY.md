@@ -1,6 +1,6 @@
 # Security
 
-Status of the UBOS MDM security posture. Last updated **13 September 2026**.
+Status of the UBOS MDM security posture. Last updated **29 September 2026**.
 
 This document replaces eleven overlapping status reports. Several of them asserted
 compliance that did not hold — one stated "Comply with NIST SP 800-124 | ✅ YES | Full
@@ -51,12 +51,20 @@ push and pull request.
 | Enrollment codes stored only as hashes | `enrollmentService.ts` | `enrollmentHandshake.test.ts` |
 | Device credentials are revocable | refresh tokens re-checked against device status | `enrollmentHandshake.test.ts` |
 | Wiped / suspended / retired / deleted devices cannot refresh | `refreshDeviceCredentials()` | `enrollmentHandshake.test.ts` |
+| Suspending, wiping or retiring a device cuts it off immediately (tokens revoked, socket closed) | `deviceController.updateDeviceStatus`, retirement | `deviceLifecycle.test.ts` |
+| A suspended or wiped device cannot reconnect or undo its status with heartbeats | `services/devicePresence.ts`, socket handshake | `devicePresence.test.ts`, `socketAuthentication.test.ts` |
+| A revoked device cannot re-enroll itself with a spare code | `enrollDevice` | `deviceController.test.ts` |
+| The agent HTTP API acts only as the device in the token | `middleware/deviceAuth.ts` | `deviceAgentApi.test.ts` |
+| Only commands the agent implements can be queued | `AGENT_COMMANDS`, `CommandService.createCommands` | `commandContract.test.ts` (parses the Kotlin), `commandService.test.ts` |
+| Only a super admin can grant or change super admin; no self-demotion; last super admin kept | `AuthService.assertCanManage` | `userManagement.test.ts` |
+| User edits accept only email, names, role, active flag | `updateUserSchema` | `userManagement.test.ts` |
+| An Active Directory login grants no MDM role by itself | `AuthService.login` | `directoryLogin.test.ts` |
 | APK package name verified against its manifest | `backend/src/services/apkInspector.ts` | `apkSupplyChain.test.ts` |
 | APK downloads require a signed, expiring URL | `backend/src/services/signedDownloads.ts` | `apkSupplyChain.test.ts` |
 | Download links are bound to one file and expire | `verifyApkDownload()` | `apkSupplyChain.test.ts` |
 | Credentials redacted before audit persistence | `backend/src/utils/redact.ts` | `auditRedaction.test.ts` |
 | Enrollment codes never reach logs or event rows | `redact.ts` + `deviceController` | `deviceController.test.ts` |
-| Mutating requests are schema-validated | Joi schemas on 17 routes | `requestValidation.test.ts` |
+| Mutating requests are schema-validated | Joi schemas on the device, command, policy and auth routes | `requestValidation.test.ts` |
 | Errors do not leak stack traces in production | `backend/src/middleware/errorHandler.ts` | `errorHandling.test.ts` |
 | The device wire contract cannot drift from the agent | `@mdm/shared-types` | `deviceContract.test.ts` — parses the Kotlin model |
 | No secrets committed to the repository | CI | gitleaks, blocking |
@@ -103,24 +111,33 @@ kiosk mode does not engage. That is the honest state, not a working one.
 - **F-15** — admin JWTs are held in `localStorage`, so any XSS yields a full admin
   session. `cookie-parser` is mounted but there is no httpOnly session flow. Refresh
   tokens are stored in the database in plaintext.
-- **F-18** — there is no coherent device API surface. Device-facing HTTP endpoints are
-  gated on permissions the DEVICE role does not hold, so devices can only report over the
-  socket.
-- **F-22** — telemetry is unbounded. Every heartbeat inserts a row; no partitioning, no
-  rollup, no retention. This is also a privacy problem: location history about
-  enumerators is personal data with no retention policy.
+- **F-22** — telemetry retention. Heartbeat history is now sampled (one row per device
+  per 15 minutes instead of one per heartbeat), but there is still no retention or
+  rollup, and location history about enumerators is personal data with no retention
+  policy.
+- **Directory passwords in cleartext.** Active Directory sign-in uses plain LDAP (389),
+  as AMS does, so sign-in passwords cross the network unencrypted. Enable LDAPS
+  (`AD_USE_LDAPS=true`, port 636) when IT provides it.
 - **F-23** — the server cannot run as more than one instance. The command queue and
   heartbeat monitor are bare `setInterval` loops with no distributed lock, and Socket.IO
   has no Redis adapter.
 
 ### Medium
 
-- **F-20** — `executeAt` / `expiresAt` are accepted, have no columns, and are discarded.
-- **F-25** — commands are marked FAILED after 5 minutes offline, which is wrong for field
-  conditions measured in days.
+- **F-20** — `executeAt` / `expiresAt` are accepted, have no columns, and are discarded
+  (`executeAt` only suppresses the immediate push).
+- No scheduled database backups (see `docs/operations.md`).
 - No approval step on destructive commands. `WIPE_DEVICE` and bulk retirement need a
   second authorised approver.
 - No SIEM export, no device-side audit events, no documented retention policy.
+
+### Fixed since the review
+
+- **F-18** — the agent now has a device-scoped HTTP API (`routes/deviceAgentRoutes.ts`).
+- **F-25** — queued commands wait `COMMAND_TTL_SECONDS` (7 days by default), not 5
+  minutes.
+- Admins could promote themselves to super admin through the user-edit API; closed
+  29 September 2026.
 
 ---
 
@@ -148,7 +165,11 @@ Report to the UBOS MDM engineering team directly. Do not open a public issue.
 - `ENCRYPTION_KEY` is mandatory in production. Data encrypted under a
   development-derived key becomes unreadable once a real key is set.
 - Rotating `JWT_SECRET` invalidates every admin session and every device access token.
-  Devices recover by refreshing; administrators must log in again.
+  Devices recover by refreshing; administrators must log in again. It was rotated on
+  29 September 2026: the live value had been the placeholder published in the compose
+  file.
 - Device access tokens last 1 hour by default and refresh tokens 90 days
-  (`DEVICE_ACCESS_TOKEN_TTL_SECONDS`, `DEVICE_REFRESH_TOKEN_TTL_DAYS`). Revoking a device
-  takes effect within one access-token lifetime.
+  (`DEVICE_ACCESS_TOKEN_TTL_SECONDS`, `DEVICE_REFRESH_TOKEN_TTL_DAYS`). Suspending,
+  wiping or retiring a device revokes its refresh tokens and disconnects it immediately;
+  its socket handshake and agent API calls are refused from then on.
+- Settings and secrets live in `ops/backend.env` (mode 600, not committed).

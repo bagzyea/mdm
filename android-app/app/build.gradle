@@ -34,7 +34,7 @@ def mdmPinBackup = project.findProperty('mdmPinBackup') ?: ''
 //
 // Credentials come from properties or the environment so the keystore is never
 // committed. In CI, set MDM_STORE_FILE/MDM_STORE_PASSWORD/MDM_KEY_ALIAS/
-// MDM_KEY_PASSWORD from secrets. See docs/KEYSTORE_SETUP.md.
+// MDM_KEY_PASSWORD from secrets. See docs/android-agent.md (Release builds).
 // ---------------------------------------------------------------------------
 def keystoreFile = project.findProperty('mdmStoreFile') ?: System.getenv('MDM_STORE_FILE')
 def keystorePassword = project.findProperty('mdmStorePassword') ?: System.getenv('MDM_STORE_PASSWORD')
@@ -175,7 +175,7 @@ tasks.matching { it.name.toLowerCase().contains('release') && it.name.startsWith
                 "cannot be provisioned as Device Owner, because the QR payload needs the " +
                 "DPC signature checksum. Set mdmStoreFile/mdmStorePassword/mdmKeyAlias/" +
                 "mdmKeyPassword, or the MDM_STORE_* environment variables. " +
-                "See docs/KEYSTORE_SETUP.md."
+                "See docs/android-agent.md (Release builds)."
             )
         }
     }

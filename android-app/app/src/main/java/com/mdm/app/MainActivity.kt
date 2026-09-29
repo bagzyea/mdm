@@ -378,9 +378,10 @@ class MainActivity : AppCompatActivity() {
     
     /**
      * Enrollment needs a single-use code an administrator generates in the dashboard
-     * (Devices -> Enrollment code). Nothing in the app used to ask for it — it read a
-     * stored code that nothing ever stored — so no tablet could enroll. It is now asked
-     * for here, and discarded after an attempt, since a code works once.
+     * (Devices -> Enroll Device -> Generate enrollment code). Nothing in the app used to
+     * ask for it — it read a stored code that nothing ever stored — so no tablet could
+     * enroll. It is now asked for here, and discarded after an attempt, since a code
+     * works once.
      */
     private fun enrollDevice() {
         val saved = preferenceManager.getEnrollmentCode()
@@ -406,7 +407,7 @@ class MainActivity : AppCompatActivity() {
 
         com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle("Enrollment code")
-            .setMessage("Enter the code from the MDM dashboard (Devices \u2192 Enrollment code).")
+            .setMessage("Enter the code from the MDM dashboard (Devices \u2192 Enroll Device \u2192 Generate enrollment code).")
             .setView(container)
             .setPositiveButton("Enroll") { _, _ ->
                 val code = input.text.toString().trim().uppercase()

@@ -8,6 +8,50 @@ recorded work as complete that was not (see `SECURITY.md`).
 
 ---
 
+## 2026-09-29 — Code-quality audit, deployment, sign-in
+
+Merged to `main` and deployed. Details in each commit; the headlines:
+
+### Correctness
+- **Suspension held.** Heartbeats, disconnects and the stale sweep wrote ACTIVE or
+  INACTIVE over SUSPENDED and WIPED, so a suspended tablet reinstated itself. Presence
+  and lifecycle status are now separate rules, and suspending, wiping or retiring cuts a
+  device off at once.
+- **The offline path works.** None of the agent's HTTP calls reached a working endpoint,
+  queued commands expired after 5 minutes, and the agent could not renew its token after
+  an hour. The device API, a 7-day command TTL and agent-side token refresh fix these.
+- **One command vocabulary.** The server queued five commands the agent did not
+  implement. `AGENT_COMMANDS` is now the single list, checked against the Kotlin.
+- **No more simulated work.** Bulk app deployment and field configuration marked
+  devices COMPLETED without sending anything. Both now send real commands and settle
+  from the devices' own reports, setting by setting.
+- **Tablets can enroll.** The agent never asked for the (mandatory) enrollment code.
+- Transactions for enrollment, transfers and retirement; device progress reports were
+  never recorded (a JSON column written with a list-only operation).
+
+### Security
+- Admins could make themselves super admin through the user-edit API. Closed.
+- The live JWT secret was the placeholder published in the compose file. Rotated.
+- The login screen advertised `admin / admin123`. Removed.
+- Release builds allowed cleartext HTTP to several hosts. Now HTTPS-only.
+
+### Operations
+- **Active Directory sign-in**, using the same directory as AMS.
+- **Migrations** now build a working database; a reconciliation migration repaired
+  the live one, which lacked the certificate and security tables.
+- **`ops/deploy-backend.sh`**, `ops/build-agent.sh` and `ops/set-password.sh`.
+  Settings are in `ops/backend.env`.
+- **Documentation consolidated.** `README.md` is the master document, supported by
+  `ARCHITECTURE`, `SECURITY`, `CHANGELOG`, `docs/operations.md`,
+  `docs/android-agent.md` and `docs/plans/`. Fifteen overlapping or outdated guides and
+  fourteen root scripts were removed; they remain in git history.
+
+### Not done
+- The agent has not been run on a real tablet, and is still a Device Admin.
+- The Asset Management System link is planned only (`docs/plans/ams-integration.md`).
+
+---
+
 ## 2026-09-13 — Phase 2 (agent correctness)
 
 ### The agent had never compiled
