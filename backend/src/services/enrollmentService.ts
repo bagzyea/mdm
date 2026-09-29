@@ -2,6 +2,10 @@ import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import config from '../config/env';
 import prisma from '../db';
+import type { Prisma, PrismaClient } from '@prisma/client';
+
+/** The shared client, or a transaction client when called inside $transaction. */
+type Db = PrismaClient | Prisma.TransactionClient;
 import { isRevoked } from './devicePresence';
 
 /**
@@ -124,14 +128,15 @@ export async function createEnrollmentToken(options: {
  */
 export async function consumeEnrollmentToken(
   code: string,
-  deviceId: string
+  deviceId: string,
+  db: Db = prisma
 ): Promise<void> {
   if (typeof code !== 'string' || code.trim() === '') {
     throw new EnrollmentError('An enrollment code is required', 'ENROLLMENT_CODE_REQUIRED', 401);
   }
 
   const normalised = code.trim().toUpperCase();
-  const token = await prisma.enrollmentToken.findUnique({
+  const token = await db.enrollmentToken.findUnique({
     where: { tokenHash: hashSecret(normalised) },
   });
 
@@ -162,7 +167,7 @@ export async function consumeEnrollmentToken(
   }
 
   // Conditional increment: only succeeds while the code still has a use left.
-  const claimed = await prisma.enrollmentToken.updateMany({
+  const claimed = await db.enrollmentToken.updateMany({
     where: {
       id: token.id,
       revokedAt: null,
@@ -227,8 +232,11 @@ function signAccessToken(deviceId: string): { token: string; expiresIn: number }
  * holds — so re-enrolling a device invalidates a stolen credential rather than letting
  * both live side by side.
  */
-export async function issueDeviceCredentials(deviceId: string): Promise<DeviceCredentials> {
-  await prisma.deviceRefreshToken.updateMany({
+export async function issueDeviceCredentials(
+  deviceId: string,
+  db: Db = prisma
+): Promise<DeviceCredentials> {
+  await db.deviceRefreshToken.updateMany({
     where: { deviceId, revokedAt: null },
     data: { revokedAt: new Date(), revokedBy: 'reissue' },
   });
@@ -238,7 +246,7 @@ export async function issueDeviceCredentials(deviceId: string): Promise<DeviceCr
     Date.now() + config.deviceRefreshTokenTtlDays * 24 * 60 * 60 * 1000
   );
 
-  await prisma.deviceRefreshToken.create({
+  await db.deviceRefreshToken.create({
     data: {
       tokenHash: hashSecret(refreshToken),
       deviceId,

@@ -1,13 +1,9 @@
 module.exports = {
   preset: 'ts-jest',
-  // Type errors are reported by `npm run build` (tsc), not by the test runner.
-  // The backend currently has ~235 pre-existing type errors (the review's Phase 1),
-  // and with ts-jest's default diagnostics any test that imports src/server.ts fails
-  // on unrelated type errors elsewhere in the import graph. Transpile-only keeps the
-  // runtime tests meaningful in the meantime.
-  // TODO(Phase 1): once `tsc` reaches zero, delete this block to restore typechecking.
+  // Tests are typechecked as well as run. This was transpile-only while the backend
+  // carried ~235 type errors; with tsc at zero, a type error in a test is a failure.
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', { diagnostics: false }]
+    '^.+\\.tsx?$': 'ts-jest'
   },
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],

@@ -1,5 +1,12 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
+import logger from '../logger';
+import { isPrismaError } from '../utils/prisma';
+import { revokeDeviceTokens } from '../services/enrollmentService';
+import { disconnectDevice } from '../socket/registry';
+
+class TransferAlreadyProcessedError extends Error {}
+class DeviceAlreadyRetiredError extends Error {}
 
 
 // Device Lifecycle Management Controller
@@ -186,35 +193,67 @@ export const approveDeviceTransfer = async (req: Request<{ transferId: string }>
       return;
     }
 
-    const newStatus = approved ? 'APPROVED' : 'REJECTED';
-    const updatedTransfer = await prisma.deviceTransfer.update({
-      where: { id: transferId },
-      data: {
-        status: newStatus,
-        approvedBy: req.user?.userId || 'system',
-        approvedAt: new Date(),
-        transferNotes: approvalNotes ? 
-          `${transfer.transferNotes || ''}\n\nApproval Notes: ${approvalNotes}`.trim() : 
-          transfer.transferNotes
-      }
-    });
+    const actor = req.user?.userId || 'system';
+    const transferNotes = approvalNotes
+      ? `${transfer.transferNotes || ''}\n\nApproval Notes: ${approvalNotes}`.trim()
+      : transfer.transferNotes;
 
-    // If approved, start transfer process
-    if (approved) {
-      await executeDeviceTransfer(transferId);
-    }
-
-    // Log approval event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: transfer.deviceId,
-        eventType: approved ? 'TRANSFER_APPROVED' : 'TRANSFER_REJECTED',
-        eventData: {
-          transferId,
-          approvedBy: req.user?.userId || 'system',
-          approvalNotes
+    // One transaction, and the PENDING check is part of the write. Previously the status
+    // was read, then written, then the device reassigned in three further statements:
+    // two concurrent approvals both passed the check, and a failure part-way left the
+    // transfer stuck IN_PROGRESS with the device half-reassigned.
+    const updatedTransfer = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.deviceTransfer.updateMany({
+        where: { id: transferId, status: 'PENDING' },
+        data: {
+          status: approved ? 'APPROVED' : 'REJECTED',
+          approvedBy: actor,
+          approvedAt: new Date(),
+          transferNotes
         }
+      });
+      if (claimed.count === 0) throw new TransferAlreadyProcessedError();
+
+      await tx.deviceEvent.create({
+        data: {
+          deviceId: transfer.deviceId,
+          eventType: approved ? 'TRANSFER_APPROVED' : 'TRANSFER_REJECTED',
+          eventData: { transferId, approvedBy: actor, approvalNotes }
+        }
+      });
+
+      if (approved) {
+        await tx.device.update({
+          where: { id: transfer.deviceId },
+          data: {
+            assignedUserId: transfer.toUserId,
+            assignedUserEmail: transfer.toUserEmail,
+            assignedUserName: transfer.toUserName,
+            departmentId: transfer.toDepartmentId,
+            departmentName: transfer.toDepartmentName
+          }
+        });
+
+        await tx.deviceEvent.create({
+          data: {
+            deviceId: transfer.deviceId,
+            eventType: 'TRANSFER_COMPLETED',
+            eventData: {
+              transferId,
+              fromUser: transfer.fromUserEmail,
+              toUser: transfer.toUserEmail,
+              completedAt: new Date()
+            }
+          }
+        });
+
+        return tx.deviceTransfer.update({
+          where: { id: transferId },
+          data: { status: 'COMPLETED', completedAt: new Date() }
+        });
       }
+
+      return tx.deviceTransfer.findUniqueOrThrow({ where: { id: transferId } });
     });
 
     // TODO: Notify via WebSocket when available
@@ -222,76 +261,13 @@ export const approveDeviceTransfer = async (req: Request<{ transferId: string }>
     res.json(updatedTransfer);
     return;
   } catch (error) {
-    console.error('Error processing transfer approval:', error);
+    if (error instanceof TransferAlreadyProcessedError) {
+      res.status(409).json({ error: 'Transfer request already processed' });
+      return;
+    }
+    logger.error(error, 'Error processing transfer approval');
     res.status(500).json({ error: 'Failed to process transfer approval' });
     return;
-  }
-};
-
-// Execute device transfer (internal)
-const executeDeviceTransfer = async (transferId: string) => {
-  try {
-    const transfer = await prisma.deviceTransfer.findUnique({
-      where: { id: transferId },
-      include: { device: true }
-    });
-
-    if (!transfer || transfer.status !== 'APPROVED') {
-      throw new Error('Transfer not in approved status');
-    }
-
-    // Update transfer status to IN_PROGRESS
-    await prisma.deviceTransfer.update({
-      where: { id: transferId },
-      data: { status: 'IN_PROGRESS' }
-    });
-
-    // Update device assignment
-    await prisma.device.update({
-      where: { id: transfer.device.id },
-      data: {
-        assignedUserId: transfer.toUserId,
-        assignedUserEmail: transfer.toUserEmail,
-        assignedUserName: transfer.toUserName,
-        departmentId: transfer.toDepartmentId,
-        departmentName: transfer.toDepartmentName
-      }
-    });
-
-    // Complete transfer
-    await prisma.deviceTransfer.update({
-      where: { id: transferId },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date()
-      }
-    });
-
-    // Log completion event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: transfer.device.id,
-        eventType: 'TRANSFER_COMPLETED',
-        eventData: {
-          transferId,
-          fromUser: transfer.fromUserEmail,
-          toUser: transfer.toUserEmail,
-          completedAt: new Date()
-        }
-      }
-    });
-
-    // TODO: Notify via WebSocket when available
-
-    console.log(`Device transfer completed: ${transferId}`);
-  } catch (error) {
-    console.error('Error executing device transfer:', error);
-    
-    // Mark transfer as failed
-    await prisma.deviceTransfer.update({
-      where: { id: transferId },
-      data: { status: 'CANCELLED' }
-    }).catch(console.error);
   }
 };
 
@@ -372,58 +348,64 @@ export const initiateDeviceRetirement = async (req: Request, res: Response) => {
       return;
     }
 
-    // Create retirement record
-    const retirement = await prisma.deviceRetirement.create({
-      data: {
-        deviceId: device.id,
-        retirementReason,
-        retirementType,
-        dataWipeRequired,
-        physicalReturn,
-        notes,
-        retiredBy: req.user?.userId || 'system'
-      },
-      include: {
-        device: {
-          select: {
-            deviceId: true,
-            model: true
+    const actor = req.user?.userId || 'system';
+
+    // Record, flag and event together, or not at all.
+    let retirement;
+    try {
+      retirement = await prisma.$transaction(async (tx) => {
+        const flagged = await tx.device.updateMany({
+          where: { id: device.id, isRetired: false },
+          data: {
+            isRetired: true,
+            retiredAt: new Date(),
+            retiredBy: actor,
+            retiredReason: retirementReason
           }
-        }
-      }
-    });
+        });
+        if (flagged.count === 0) throw new DeviceAlreadyRetiredError();
 
-    // Mark device as retired
-    await prisma.device.update({
-      where: { id: device.id },
-      data: {
-        isRetired: true,
-        retiredAt: new Date(),
-        retiredBy: req.user?.userId || 'system',
-        retiredReason: retirementReason
-      }
-    });
+        const created = await tx.deviceRetirement.create({
+          data: {
+            deviceId: device.id,
+            retirementReason,
+            retirementType,
+            dataWipeRequired,
+            physicalReturn,
+            notes,
+            retiredBy: actor
+          },
+          include: { device: { select: { deviceId: true, model: true } } }
+        });
 
-    // Log retirement event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: device.id,
-        eventType: 'RETIREMENT_INITIATED',
-        eventData: {
-          retirementId: retirement.id,
-          retirementReason,
-          retirementType,
-          retiredBy: req.user?.userId || 'system'
-        }
+        await tx.deviceEvent.create({
+          data: {
+            deviceId: device.id,
+            eventType: 'RETIREMENT_INITIATED',
+            eventData: { retirementId: created.id, retirementReason, retirementType, retiredBy: actor }
+          }
+        });
+
+        return created;
+      });
+    } catch (error) {
+      if (error instanceof DeviceAlreadyRetiredError || (isPrismaError(error) && error.code === 'P2002')) {
+        res.status(400).json({ error: 'Device already retired' });
+        return;
       }
-    });
+      throw error;
+    }
+
+    // A retired tablet must stop talking to the server now, not when its tokens lapse.
+    await revokeDeviceTokens(device.deviceId, `retired-by-${actor}`);
+    disconnectDevice(device.deviceId, 'This device has been retired');
 
     // TODO: Notify via WebSocket when available
 
     res.status(201).json(retirement);
     return;
   } catch (error) {
-    console.error('Error initiating device retirement:', error);
+    logger.error(error, 'Error initiating device retirement');
     res.status(500).json({ error: 'Failed to initiate device retirement' });
     return;
   }

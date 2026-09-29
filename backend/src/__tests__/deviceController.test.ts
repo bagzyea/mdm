@@ -53,11 +53,36 @@ function applyData(row: any, data: any): void {
   }
 }
 
+/**
+ * Run `fn` against `client`, restoring the in-memory store if it throws — enough of
+ * Postgres transaction semantics to show that a failed enrollment rolls back.
+ */
+function withTransactions(client: any): any {
+  client.$transaction = async (fn: (tx: any) => Promise<unknown>) => {
+    const snapshot = structuredClone({
+      devices: store.devices,
+      enrollmentTokens: store.enrollmentTokens,
+      refreshTokens: store.refreshTokens,
+      events: store.events,
+    });
+    try {
+      return await fn(client);
+    } catch (error) {
+      for (const key of Object.keys(snapshot) as (keyof typeof snapshot)[]) {
+        (store[key] as any[]).length = 0;
+        (store[key] as any[]).push(...snapshot[key]);
+      }
+      throw error;
+    }
+  };
+  return client;
+}
+
 jest.mock('@prisma/client', () => ({
   // Keep the real Prisma namespace: Prisma.DbNull and friends are sentinel values the
   // code compares against, so faking them would change behaviour rather than isolate it.
   ...jest.requireActual('@prisma/client'),
-  PrismaClient: jest.fn().mockImplementation(() => ({
+  PrismaClient: jest.fn().mockImplementation(() => withTransactions({
     device: {
       findUnique: jest.fn(async ({ where }: any) =>
         store.devices.find((d) => d.deviceId === where.deviceId) ?? null
@@ -246,6 +271,36 @@ describe('enrollDevice', () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(store.refreshTokens).toHaveLength(0);
+  });
+
+  it('does not burn the code when creating the device fails', async () => {
+    // The code used to be spent before the device row was written, so a failure there
+    // left the operator with a used code and no enrolled tablet.
+    const enrollmentCode = await issueCode();
+    store.failDeviceCreateWith = new Error('Database connection lost');
+
+    await enrollDevice({ body: { deviceInfo, enrollmentCode } } as Request, mockResponse());
+
+    expect(store.enrollmentTokens[0].useCount).toBe(0);
+    expect(store.refreshTokens).toHaveLength(0);
+
+    store.failDeviceCreateWith = null;
+    const retry = mockResponse();
+    await enrollDevice({ body: { deviceInfo, enrollmentCode } } as Request, retry);
+    expect(retry.status).toHaveBeenCalledWith(201);
+  });
+
+  it.each(['SUSPENDED', 'WIPED'])('refuses to let a %s device re-enroll itself', async (status) => {
+    // Re-enrollment used to reset any device to ENROLLED, undoing the suspension.
+    store.devices.push({ id: 'db-1', deviceId: 'device-123', status, isRetired: false });
+    const enrollmentCode = await issueCode();
+
+    const res = mockResponse();
+    await enrollDevice({ body: { deviceInfo, enrollmentCode } } as Request, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(store.devices[0]!.status).toBe(status);
+    expect(store.enrollmentTokens[0].useCount).toBe(0);
   });
 
   it('re-enrolls an existing device when a valid code is presented', async () => {

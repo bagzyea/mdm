@@ -11,7 +11,7 @@ import {
   revokeDeviceTokens,
   EnrollmentError,
 } from '../services/enrollmentService';
-import { REVOKED_STATUSES } from '../services/devicePresence';
+import { REVOKED_STATUSES, isRevoked } from '../services/devicePresence';
 import { recordHeartbeat, DeviceNotAllowedError } from '../services/telemetryService';
 import { disconnectDevice } from '../socket/registry';
 import { serializeDevice } from '../utils/serialize';
@@ -120,138 +120,102 @@ export const getDevice = async (req: Request<{ deviceId: string }>, res: Respons
 
 export const enrollDevice = async (req: Request, res: Response) => {
   try {
-    // The body carries the enrollment code, so it is not logged verbatim.
-    console.log('Enrollment request received for device:', req.body?.deviceInfo?.deviceId ?? req.body?.deviceId);
-    
     // Handle both direct DeviceInfo and EnrollmentRequest formats
     const enrollmentData = req.body;
     const deviceInfo: DeviceInfo = enrollmentData.deviceInfo || enrollmentData;
     const enrollmentCode = enrollmentData.enrollmentCode;
     const organizationId = enrollmentData.organizationId;
-    
+
     if (!deviceInfo || !deviceInfo.deviceId) {
-      res.status(400).json({ 
+      res.status(400).json({
         success: false,
-        error: 'Invalid enrollment data: deviceInfo and deviceId are required' 
+        error: 'Invalid enrollment data: deviceInfo and deviceId are required'
       });
       return;
     }
 
-    // Enrollment now requires a single-use, expiring, admin-issued code bound
-    // optionally to a pre-registered serial (findings F-02, F-13). Previously the
-    // code was optional, checked only for length >= 4, and generated codes were
-    // never persisted — so device identity could be claimed by anyone who could
-    // reach this endpoint, and re-posting an existing deviceId minted a fresh
-    // credential for that device.
-    try {
-      await consumeEnrollmentToken(enrollmentCode, deviceInfo.deviceId);
-    } catch (error) {
-      if (error instanceof EnrollmentError) {
-        res.status(error.statusCode).json({
-          success: false,
-          error: error.message,
-          code: error.code,
-        });
-        return;
-      }
-      throw error;
+    // The body carries the enrollment code, so it is not logged verbatim.
+    logger.info({ deviceId: deviceInfo.deviceId }, 'Enrollment request received');
+
+    // Re-enrollment used to reset any existing device to ENROLLED, so a suspended or
+    // wiped tablet holding any valid code reinstated itself. An administrator must
+    // reactivate it first. Checked before the code is spent.
+    const existingDevice = await prisma.device.findUnique({
+      where: { deviceId: deviceInfo.deviceId },
+      select: { status: true, isRetired: true }
+    });
+    if (existingDevice && isRevoked(existingDevice)) {
+      res.status(403).json({
+        success: false,
+        error: 'This device has been suspended, wiped or retired; reactivate it before re-enrolling',
+        code: 'DEVICE_REVOKED'
+      });
+      return;
     }
 
-    // Check if device already exists
-    const existingDevice = await prisma.device.findUnique({
-      where: { deviceId: deviceInfo.deviceId }
-    });
-    
-    if (existingDevice) {
-      // Update existing device instead of returning error
-      const updatedDevice = await prisma.device.update({
-        where: { deviceId: deviceInfo.deviceId },
-        data: definedOnly({
-          manufacturer: deviceInfo.manufacturer,
-          model: deviceInfo.model,
-          androidVersion: deviceInfo.osVersion,
-          sdkVersion: deviceInfo.apiLevel,
-          fingerprint: deviceInfo.buildNumber || `${deviceInfo.manufacturer}_${deviceInfo.model}_${deviceInfo.osVersion}`,
-          status: 'ENROLLED',
-          batteryLevel: deviceInfo.batteryLevel,
-          isCharging: deviceInfo.isCharging || false,
-          totalStorage: deviceInfo.storageTotal ? BigInt(deviceInfo.storageTotal) : null,
-          availableStorage: deviceInfo.storageTotal && deviceInfo.storageUsed 
-            ? BigInt(deviceInfo.storageTotal - deviceInfo.storageUsed) : null,
-          totalRAM: deviceInfo.ramTotal ? BigInt(deviceInfo.ramTotal) : null,
-          availableRAM: deviceInfo.ramTotal && deviceInfo.ramUsed 
-            ? BigInt(deviceInfo.ramTotal - deviceInfo.ramUsed) : null,
-          networkInfo: toJson(deviceInfo.networkInfo),
-          location: toJson(deviceInfo.location),
-          assignedTo: organizationId,
-          lastSeen: new Date(),
-          updatedAt: new Date()
-        })
-      });
-      
+    const fields = {
+      manufacturer: deviceInfo.manufacturer,
+      model: deviceInfo.model,
+      androidVersion: deviceInfo.osVersion,
+      sdkVersion: deviceInfo.apiLevel,
+      fingerprint: deviceInfo.buildNumber || `${deviceInfo.manufacturer}_${deviceInfo.model}_${deviceInfo.osVersion}`,
+      status: 'ENROLLED' as const,
+      batteryLevel: deviceInfo.batteryLevel,
+      isCharging: deviceInfo.isCharging || false,
+      totalStorage: deviceInfo.storageTotal ? BigInt(deviceInfo.storageTotal) : null,
+      availableStorage: deviceInfo.storageTotal && deviceInfo.storageUsed
+        ? BigInt(deviceInfo.storageTotal - deviceInfo.storageUsed) : null,
+      totalRAM: deviceInfo.ramTotal ? BigInt(deviceInfo.ramTotal) : null,
+      availableRAM: deviceInfo.ramTotal && deviceInfo.ramUsed
+        ? BigInt(deviceInfo.ramTotal - deviceInfo.ramUsed) : null,
+      networkInfo: toJson(deviceInfo.networkInfo),
+      location: toJson(deviceInfo.location),
+      assignedTo: organizationId
+    };
+
+    // Code, device and credentials in one transaction. Previously the single-use code
+    // was spent first, so a failure creating the device burned it.
+    //
+    // Enrollment requires a single-use, expiring, admin-issued code bound optionally to
+    // a pre-registered serial (findings F-02, F-13).
+    const { device, credentials } = await prisma.$transaction(async (tx) => {
+      await consumeEnrollmentToken(enrollmentCode, deviceInfo.deviceId, tx);
+
+      const device = existingDevice
+        ? await tx.device.update({
+            where: { deviceId: deviceInfo.deviceId },
+            data: definedOnly({ ...fields, lastSeen: new Date() })
+          })
+        : await tx.device.create({
+            data: definedOnly({ deviceId: deviceInfo.deviceId, ...fields })
+          });
+
       // Issuing credentials revokes any the device already held, so a stolen
       // credential does not survive a legitimate re-enrollment.
-      const credentials = await issueDeviceCredentials(updatedDevice.deviceId);
+      const credentials = await issueDeviceCredentials(device.deviceId, tx);
 
-      res.status(200).json({
-        success: true,
-        message: 'Device re-enrolled successfully',
-        deviceId: updatedDevice.deviceId,
-        // `deviceToken` is retained under its original name for agent compatibility.
-        deviceToken: credentials.accessToken,
-        expiresIn: credentials.expiresIn,
-        refreshToken: credentials.refreshToken,
-        refreshTokenExpiresAt: credentials.refreshTokenExpiresAt.toISOString(),
-        serverEndpoints: {
-          api: process.env.API_BASE_URL || "http://localhost:5001/api/",
-          websocket: process.env.WEBSOCKET_URL || "http://localhost:5001"
-        }
-      });
-      return;
-    }
-    
-    const device = await prisma.device.create({
-      data: definedOnly({
-        deviceId: deviceInfo.deviceId,
-        manufacturer: deviceInfo.manufacturer,
-        model: deviceInfo.model,
-        androidVersion: deviceInfo.osVersion,
-        sdkVersion: deviceInfo.apiLevel,
-        fingerprint: deviceInfo.buildNumber || `${deviceInfo.manufacturer}_${deviceInfo.model}_${deviceInfo.osVersion}`,
-        status: 'ENROLLED',
-        batteryLevel: deviceInfo.batteryLevel,
-        isCharging: deviceInfo.isCharging || false,
-        totalStorage: deviceInfo.storageTotal ? BigInt(deviceInfo.storageTotal) : null,
-        availableStorage: deviceInfo.storageTotal && deviceInfo.storageUsed 
-          ? BigInt(deviceInfo.storageTotal - deviceInfo.storageUsed) : null,
-        totalRAM: deviceInfo.ramTotal ? BigInt(deviceInfo.ramTotal) : null,
-        availableRAM: deviceInfo.ramTotal && deviceInfo.ramUsed 
-          ? BigInt(deviceInfo.ramTotal - deviceInfo.ramUsed) : null,
-        networkInfo: toJson(deviceInfo.networkInfo),
-        location: toJson(deviceInfo.location),
-        assignedTo: organizationId
-      })
-    });
-    
-    const credentials = await issueDeviceCredentials(device.deviceId);
-
-    // Log enrollment event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: device.id,
-        eventType: 'ENROLLMENT',
-        // enrollmentData is the request body, which carries the enrollment code —
-        // a credential that must not be persisted in the event log.
-        eventData: redactSensitive({ ...enrollmentData, deviceToken: '[REDACTED]' }) as any
+      if (!existingDevice) {
+        await tx.deviceEvent.create({
+          data: {
+            deviceId: device.id,
+            eventType: 'ENROLLMENT',
+            // enrollmentData is the request body, which carries the enrollment code —
+            // a credential that must not be persisted in the event log.
+            eventData: redactSensitive({ ...enrollmentData, deviceToken: '[REDACTED]' }) as any
+          }
+        });
       }
+
+      return { device, credentials };
     });
-    
-    console.log('Device enrolled successfully:', device.deviceId);
-    
-    res.status(201).json({
+
+    logger.info({ deviceId: device.deviceId, reEnrolled: !!existingDevice }, 'Device enrolled');
+
+    res.status(existingDevice ? 200 : 201).json({
       success: true,
-      message: 'Device enrolled successfully',
+      message: existingDevice ? 'Device re-enrolled successfully' : 'Device enrolled successfully',
       deviceId: device.deviceId,
+      // `deviceToken` is retained under its original name for agent compatibility.
       deviceToken: credentials.accessToken,
       expiresIn: credentials.expiresIn,
       refreshToken: credentials.refreshToken,
@@ -262,18 +226,22 @@ export const enrollDevice = async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error enrolling device:', error);
+    if (error instanceof EnrollmentError) {
+      res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+      return;
+    }
 
-    // Check if it's a Prisma constraint error
+    logger.error(error, 'Error enrolling device');
+
     if (isPrismaError(error) && error.code === 'P2002') {
-      res.status(409).json({ 
+      res.status(409).json({
         success: false,
-        error: 'Device with this ID or fingerprint already exists' 
+        error: 'Device with this ID or fingerprint already exists'
       });
       return;
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       success: false,
       error: 'Failed to enroll device: ' + errorMessage(error)
     });
