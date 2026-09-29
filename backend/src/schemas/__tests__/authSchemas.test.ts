@@ -162,6 +162,11 @@ describe('Auth Schemas', () => {
   });
 
   describe('userIdSchema', () => {
+    it('accepts a real user ID, which is a cuid', () => {
+      const { error } = userIdSchema.validate({ id: 'cmo01zhrm0000sjr32kyzue5s' });
+      expect(error).toBeUndefined();
+    });
+
     it('should validate valid UUID', () => {
       const validData = {
         id: '123e4567-e89b-12d3-a456-426614174000'
@@ -179,7 +184,7 @@ describe('Auth Schemas', () => {
 
       const { error } = userIdSchema.validate(invalidData);
       expect(error).toBeDefined();
-      expect(error?.details[0].message).toContain('valid UUID');
+      expect(error?.details[0].message).toContain('valid user ID');
     });
 
     it('should reject missing ID', () => {

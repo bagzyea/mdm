@@ -83,12 +83,17 @@ export const refreshTokenSchema = Joi.object({
     })
 });
 
+/**
+ * User IDs are Prisma cuids (e.g. cmo01zhrm0000sjr32kyzue5s). This required a UUID, so
+ * every edit, deactivation and delete of a real user was refused with a 400 before
+ * reaching the handler — the same mistake the device and policy schemas once had.
+ */
 export const userIdSchema = Joi.object({
-  id: Joi.string()
-    .uuid()
+  id: Joi.alternatives()
+    .try(Joi.string().pattern(/^c[a-z0-9]{20,32}$/), Joi.string().uuid())
     .required()
     .messages({
-      'string.guid': 'User ID must be a valid UUID',
+      'alternatives.match': 'User ID must be a valid user ID',
       'any.required': 'User ID is required'
     })
 });
