@@ -70,6 +70,9 @@ model Device {
   @@index([lastSeen])           // heartbeat monitor queries (runs every 60s)
   @@index([status])             // status filter queries
   @@index([provisioningStatus]) // provisioning queries
+  @@index([assignedUserId])     // lifecycle: devices by assignee
+  @@index([departmentId])       // lifecycle: devices by district
+  @@index([isRetired])          // lifecycle: active versus retired fleet
 }
 
 model Policy {
