@@ -8,240 +8,279 @@ datasource db {
 }
 
 model Device {
-  id              String   @id @default(cuid())
-  deviceId        String   @unique
-  manufacturer    String
-  model           String
-  androidVersion  String
-  sdkVersion      Int
-  fingerprint     String   @unique
-  status          DeviceStatus @default(ENROLLED)
-  enrolledAt      DateTime @default(now())
-  lastSeen        DateTime @default(now())
-  location        Json?
-  assignedTo      String?
-  policies        Policy[]
-  commands        RemoteCommand[]
-  events          DeviceEvent[]
-  certificates    DeviceCertificate[]
-  securityStatus  SecurityStatus?
-  
-  // Lifecycle Management Fields
-  assignedUserId        String?
-  assignedUserEmail     String?
-  assignedUserName      String?
-  departmentId          String?
-  departmentName        String?
-  purchaseDate          DateTime?
-  warrantyExpiry        DateTime?
-  purchaseCost          Decimal?
-  supplier              String?
-  isRetired             Boolean               @default(false)
-  retiredAt             DateTime?
-  retiredBy             String?
-  retiredReason         String?
-  
-  // Lifecycle Relationships
-  department            Department?           @relation(fields: [departmentId], references: [id])
-  transfers             DeviceTransfer[]
-  retirement            DeviceRetirement?
-  
-  // Enhanced monitoring fields
-  batteryLevel    Int?     // Battery percentage (0-100)
-  isCharging      Boolean  @default(false)
-  totalStorage    BigInt?  // Total storage in bytes
-  availableStorage BigInt? // Available storage in bytes
-  totalRAM        BigInt?  // Total RAM in bytes
-  availableRAM    BigInt?  // Available RAM in bytes
-  networkInfo     Json?    // Network connectivity info
-  appUsageStats   Json?    // Application usage statistics
-  systemHealth    Json?    // System health metrics
-  
-  // Provisioning fields
-  deviceModel     String?  // Device model for provisioning
-  lastProvisionedAt DateTime?
-  provisioningStatus ProvisioningDeviceStatus @default(NOT_PROVISIONED)
-  provisioningProgress ProvisioningProgress[]
-  qualityControlResults QualityControlResult[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String              @id @default(cuid())
+  deviceId       String              @unique
+  manufacturer   String
+  model          String
+  androidVersion String
+  sdkVersion     Int
+  fingerprint    String              @unique
+  status         DeviceStatus        @default(ENROLLED)
+  enrolledAt     DateTime            @default(now())
+  lastSeen       DateTime            @default(now())
+  location       Json?
+  assignedTo     String?
+  policies       Policy[]
+  commands       RemoteCommand[]
+  events         DeviceEvent[]
+  certificates   DeviceCertificate[]
+  securityStatus SecurityStatus?
 
-  @@index([lastSeen])           // heartbeat monitor queries (runs every 60s)
-  @@index([status])             // status filter queries
+  // Lifecycle Management Fields
+  assignedUserId    String?
+  assignedUserEmail String?
+  assignedUserName  String?
+  departmentId      String?
+  departmentName    String?
+  purchaseDate      DateTime?
+  warrantyExpiry    DateTime?
+  purchaseCost      Decimal?
+  supplier          String?
+  isRetired         Boolean   @default(false)
+  retiredAt         DateTime?
+  retiredBy         String?
+  retiredReason     String?
+
+  // Lifecycle Relationships
+  department Department?       @relation(fields: [departmentId], references: [id])
+  transfers  DeviceTransfer[]
+  retirement DeviceRetirement?
+
+  // Link to the Asset Management System (AMS). Kept for the planned integration —
+  // see docs/plans/ams-integration.md. assetTag matches AMS Asset.asset_tag.
+  assetTag    String?      @unique
+  assetRecord AssetRecord?
+
+  // Enhanced monitoring fields
+  batteryLevel     Int? // Battery percentage (0-100)
+  isCharging       Boolean @default(false)
+  totalStorage     BigInt? // Total storage in bytes
+  availableStorage BigInt? // Available storage in bytes
+  totalRAM         BigInt? // Total RAM in bytes
+  availableRAM     BigInt? // Available RAM in bytes
+  networkInfo      Json? // Network connectivity info
+  appUsageStats    Json? // Application usage statistics
+  systemHealth     Json? // System health metrics
+
+  // Provisioning fields
+  deviceModel           String? // Device model for provisioning
+  lastProvisionedAt     DateTime?
+  provisioningStatus    ProvisioningDeviceStatus @default(NOT_PROVISIONED)
+  provisioningProgress  ProvisioningProgress[]
+  qualityControlResults QualityControlResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lastSeen]) // heartbeat monitor queries (runs every 60s)
+  @@index([status]) // status filter queries
   @@index([provisioningStatus]) // provisioning queries
-  @@index([assignedUserId])     // lifecycle: devices by assignee
-  @@index([departmentId])       // lifecycle: devices by district
-  @@index([isRetired])          // lifecycle: active versus retired fleet
+  @@index([assignedUserId]) // lifecycle: devices by assignee
+  @@index([departmentId]) // lifecycle: devices by district
+  @@index([isRetired]) // lifecycle: active versus retired fleet
+  @@index([assetTag]) // AMS lookups by asset tag
+}
+
+/// The device's record in the Asset Management System. Created by the 2025-08 lifecycle
+/// migration and unused so far; reserved for the AMS integration
+/// (docs/plans/ams-integration.md).
+model AssetRecord {
+  id                    String    @id @default(cuid())
+  deviceId              String    @unique
+  externalAssetId       String? // AMS Asset.id
+  assetManagementSystem String?
+  assetCategory         String?
+  costCenter            String?
+  budgetCode            String?
+  depreciationSchedule  String?
+  currentValue          Decimal?  @db.Decimal(10, 2)
+  residualValue         Decimal?  @db.Decimal(10, 2)
+  maintenanceContract   String?
+  maintenanceExpiry     DateTime?
+  insurancePolicy       String?
+  insuranceExpiry       DateTime?
+  complianceStatus      String?
+  auditDate             DateTime?
+  customFields          Json?
+  syncStatus            String    @default("PENDING")
+  lastSyncAt            DateTime?
+  syncError             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  device                Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([externalAssetId])
+  @@index([syncStatus])
 }
 
 model Policy {
-  id              String   @id @default(cuid())
-  name            String
-  description     String
-  type            PolicyType
-  rules           Json
-  targetDevices   String[]
-  priority        Int      @default(0)
-  isActive        Boolean  @default(true)
-  devices         Device[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String     @id @default(cuid())
+  name          String
+  description   String
+  type          PolicyType
+  rules         Json
+  targetDevices String[]
+  priority      Int        @default(0)
+  isActive      Boolean    @default(true)
+  devices       Device[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 }
 
 model RemoteCommand {
-  id              String   @id @default(cuid())
-  deviceId        String
-  command         String
-  parameters      Json?
-  status          CommandStatus @default(PENDING)
-  result          Json?
-  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         String        @id @default(cuid())
+  deviceId   String
+  command    String
+  parameters Json?
+  status     CommandStatus @default(PENDING)
+  result     Json?
+  device     Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
-  @@index([status])             // command queue processor queries
-  @@index([deviceId, status])   // per-device pending command lookup
-  @@index([createdAt])          // timeout calculation queries
+  @@index([status]) // command queue processor queries
+  @@index([deviceId, status]) // per-device pending command lookup
+  @@index([createdAt]) // timeout calculation queries
 }
 
 model DeviceEvent {
-  id              String   @id @default(cuid())
-  deviceId        String
-  eventType       String
-  eventData       Json?
-  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
+  id        String   @id @default(cuid())
+  deviceId  String
+  eventType String
+  eventData Json?
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
-  @@index([createdAt])          // timeline / audit queries
+  @@index([createdAt]) // timeline / audit queries
   @@index([deviceId, createdAt]) // per-device event history
-  @@index([eventType])          // event type filter queries
+  @@index([eventType]) // event type filter queries
 }
 
 // Advanced Security Models
 model Certificate {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  type            CertificateType
-  certificateData String   // PEM encoded certificate
-  privateKey      String?  // Encrypted private key (if applicable)
-  issuer          String
-  subject         String
-  validFrom       DateTime
-  validTo         DateTime
-  isActive        Boolean  @default(true)
-  isRevoked       Boolean  @default(false)
-  revocationDate  DateTime?
+  id               String              @id @default(cuid())
+  name             String
+  description      String?
+  type             CertificateType
+  certificateData  String // PEM encoded certificate
+  privateKey       String? // Encrypted private key (if applicable)
+  issuer           String
+  subject          String
+  validFrom        DateTime
+  validTo          DateTime
+  isActive         Boolean             @default(true)
+  isRevoked        Boolean             @default(false)
+  revocationDate   DateTime?
   revocationReason String?
-  devices         DeviceCertificate[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdBy       String?
-  
+  devices          DeviceCertificate[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  createdBy        String?
+
   @@index([isActive])
   @@index([validTo])
 }
 
 model DeviceCertificate {
-  id            String   @id @default(cuid())
+  id            String            @id @default(cuid())
   deviceId      String
   certificateId String
   status        CertificateStatus @default(ACTIVE)
-  installedAt   DateTime @default(now())
+  installedAt   DateTime          @default(now())
   expiresAt     DateTime
   lastVerified  DateTime?
-  device        Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  certificate   Certificate  @relation(fields: [certificateId], references: [id], onDelete: Cascade)
-  
+  device        Device            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  certificate   Certificate       @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
   @@unique([deviceId, certificateId])
   @@index([expiresAt])
 }
 
 model SecurityStatus {
-  id                    String   @id @default(cuid())
-  deviceId              String   @unique
-  encryptionStatus      EncryptionStatus @default(UNKNOWN)
-  encryptionType        String?  // AES, ChaCha20, etc.
-  encryptionStrength    Int?     // 128, 256, etc.
-  rootStatus            Boolean  @default(false)
-  jailbreakDetected     Boolean  @default(false)
-  securityPatchLevel    String?
-  lastSecurityScan      DateTime?
-  complianceStatus      ComplianceStatus @default(UNKNOWN)
-  complianceScore       Int?     // 0-100
-  lastComplianceCheck   DateTime?
-  device                Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                  String           @id @default(cuid())
+  deviceId            String           @unique
+  encryptionStatus    EncryptionStatus @default(UNKNOWN)
+  encryptionType      String? // AES, ChaCha20, etc.
+  encryptionStrength  Int? // 128, 256, etc.
+  rootStatus          Boolean          @default(false)
+  jailbreakDetected   Boolean          @default(false)
+  securityPatchLevel  String?
+  lastSecurityScan    DateTime?
+  complianceStatus    ComplianceStatus @default(UNKNOWN)
+  complianceScore     Int? // 0-100
+  lastComplianceCheck DateTime?
+  device              Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }
 
 model ComplianceReport {
-  id              String   @id @default(cuid())
+  id              String               @id @default(cuid())
   deviceId        String
   reportType      ComplianceReportType
   status          ComplianceStatus
-  score           Int      // 0-100
-  details         Json     // Detailed compliance check results
-  violations      Json?    // List of compliance violations
-  recommendations Json?    // Recommendations for compliance
-  generatedAt     DateTime @default(now())
+  score           Int // 0-100
+  details         Json // Detailed compliance check results
+  violations      Json? // List of compliance violations
+  recommendations Json? // Recommendations for compliance
+  generatedAt     DateTime             @default(now())
   expiresAt       DateTime?
-  
+
   @@index([deviceId])
   @@index([generatedAt])
 }
 
 model User {
-  id              String   @id @default(cuid())
-  username        String   @unique
-  email           String   @unique
-  password        String
-  firstName       String
-  lastName        String
-  role            UserRole @default(VIEWER)
-  isActive        Boolean  @default(true)
-  lastLogin       DateTime?
-  refreshToken    String?
-  resetToken      String?
+  id               String    @id @default(cuid())
+  username         String    @unique
+  email            String    @unique
+  password         String
+  firstName        String
+  lastName         String
+  role             UserRole  @default(VIEWER)
+  isActive         Boolean   @default(true)
+  lastLogin        DateTime?
+  refreshToken     String?
+  resetToken       String?
   resetTokenExpiry DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdBy       String?
-  
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdBy        String?
+
   // Audit trail
-  auditLogs       AuditLog[]
-  refreshTokens   RefreshToken[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 }
 
 model AuditLog {
-  id              String   @id @default(cuid())
-  userId          String
-  action          String
-  resource        String
-  resourceId      String?
-  details         Json?
-  ipAddress       String?
-  userAgent       String?
-  createdAt       DateTime @default(now())
-  
-  user            User     @relation(fields: [userId], references: [id])
-  
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
   @@index([userId])
   @@index([resource])
   @@index([createdAt])
 }
 
 model RefreshToken {
-  id              String   @id @default(cuid())
-  token           String   @unique
-  userId          String
-  expiresAt       DateTime
-  isRevoked       Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  
-  user            User     @relation(fields: [userId], references: [id])
-  
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
   @@index([token])
   @@index([userId])
   @@index([expiresAt])
@@ -329,121 +368,121 @@ model FieldConfiguration {
   name                String
   description         String?
   deviceModels        String[] // Supported device models
-  configurations      Json     // Field-specific configurations
-  dataCollectionRules Json?    // Data collection rules and settings
+  configurations      Json // Field-specific configurations
+  dataCollectionRules Json? // Data collection rules and settings
   isActive            Boolean  @default(true)
   createdBy           String?
   updatedBy           String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  
+
   @@index([isActive])
   @@index([createdBy])
 }
 
 model ProvisioningProfile {
-  id              String   @id @default(cuid())
+  id              String                @id @default(cuid())
   name            String
   description     String?
   deviceModels    String[] // ["Samsung-T225", "ZTE", "MiOne", "Laxton"]
   applications    ProvisioningApp[]
-  networkConfig   Json?    // APN settings
-  securityConfig  Json?    // PIN, timeout settings
+  networkConfig   Json? // APN settings
+  securityConfig  Json? // PIN, timeout settings
   filePackages    FilePackage[]
-  geographicRules Json?    // District/location assignments
-  isActive        Boolean  @default(true)
+  geographicRules Json? // District/location assignments
+  isActive        Boolean               @default(true)
   sessions        ProvisioningSession[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
   createdBy       String?
-  
+
   @@index([isActive])
 }
 
 model ProvisioningApp {
-  id                String   @id @default(cuid())
-  profileId         String
-  packageName       String
-  appName           String
-  version           String?
-  apkUrl            String?  // File storage path
-  apkHash           String?  // SHA-256 hash for integrity
+  id                  String   @id @default(cuid())
+  profileId           String
+  packageName         String
+  appName             String
+  version             String?
+  apkUrl              String? // File storage path
+  apkHash             String? // SHA-256 hash for integrity
   requiredPermissions String[]
-  installOrder      Int      @default(0)
-  isRequired        Boolean  @default(true)
-  
+  installOrder        Int      @default(0)
+  isRequired          Boolean  @default(true)
+
   // New flexible APK system fields
-  apkId             String?  // Reference to APK Registry
-  autoStart         Boolean  @default(false)
-  customPermissions String[] // Additional permissions beyond default
-  installationNotes String?  // Special installation instructions
+  apkId               String? // Reference to APK Registry
+  autoStart           Boolean  @default(false)
+  customPermissions   String[] // Additional permissions beyond default
+  installationNotes   String? // Special installation instructions
   selectedDataFolders String[] // Array of APKDataFolder IDs to deploy
-  customDataMappings  Json?    // Custom path mappings if needed
-  installConditions Json?    // Conditions for when to install this app
-  
-  profile           ProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  apk               APKRegistry? @relation(fields: [apkId], references: [id])
-  
+  customDataMappings  Json? // Custom path mappings if needed
+  installConditions   Json? // Conditions for when to install this app
+
+  profile ProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  apk     APKRegistry?        @relation(fields: [apkId], references: [id])
+
+  @@unique([profileId, apkId]) // Prevent duplicate apps in same profile
   @@index([profileId])
   @@index([apkId])
-  @@unique([profileId, apkId]) // Prevent duplicate apps in same profile
 }
 
 model FilePackage {
-  id              String   @id @default(cuid())
-  profileId       String
-  name            String
-  description     String?
-  fileType        FilePackageType
-  filePath        String   // Storage path
-  fileHash        String?  // SHA-256 hash
-  targetPath      String   // Where to place on device
-  isRequired      Boolean  @default(true)
-  fileSize        BigInt?  // File size in bytes
-  profile         ProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  
+  id          String              @id @default(cuid())
+  profileId   String
+  name        String
+  description String?
+  fileType    FilePackageType
+  filePath    String // Storage path
+  fileHash    String? // SHA-256 hash
+  targetPath  String // Where to place on device
+  isRequired  Boolean             @default(true)
+  fileSize    BigInt? // File size in bytes
+  profile     ProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
   @@index([profileId])
 }
 
 model ProvisioningSession {
-  id              String   @id @default(cuid())
-  profileId       String?  // Made optional to support field configurations
-  name            String
-  description     String?
-  status          ProvisioningSessionStatus @default(PENDING)
-  deviceIds       String[] // Target devices
-  progress        ProvisioningProgress[]
+  id                    String                    @id @default(cuid())
+  profileId             String? // Made optional to support field configurations
+  name                  String
+  description           String?
+  status                ProvisioningSessionStatus @default(PENDING)
+  deviceIds             String[] // Target devices
+  progress              ProvisioningProgress[]
   qualityControlResults QualityControlResult[]
-  totalDevices    Int      @default(0)
-  completedDevices Int     @default(0)
-  failedDevices   Int      @default(0)
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdBy       String
-  profile         ProvisioningProfile? @relation(fields: [profileId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  totalDevices          Int                       @default(0)
+  completedDevices      Int                       @default(0)
+  failedDevices         Int                       @default(0)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdBy             String
+  profile               ProvisioningProfile?      @relation(fields: [profileId], references: [id])
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
   @@index([status])
   @@index([createdBy])
 }
 
 model ProvisioningProgress {
-  id              String   @id @default(cuid())
-  sessionId       String
-  deviceId        String
-  status          ProvisioningDeviceStatus @default(PENDING)
-  currentStep     String?
-  totalSteps      Int      @default(0)
-  completedSteps  Int      @default(0)
-  errorMessage    String?
-  errorCode       String?
-  logs            Json?    // Detailed step logs
-  startedAt       DateTime?
-  completedAt     DateTime?
-  session         ProvisioningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
+  id             String                   @id @default(cuid())
+  sessionId      String
+  deviceId       String
+  status         ProvisioningDeviceStatus @default(PENDING)
+  currentStep    String?
+  totalSteps     Int                      @default(0)
+  completedSteps Int                      @default(0)
+  errorMessage   String?
+  errorCode      String?
+  logs           Json? // Detailed step logs
+  startedAt      DateTime?
+  completedAt    DateTime?
+  session        ProvisioningSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  device         Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
   @@unique([sessionId, deviceId])
   @@index([sessionId])
   @@index([deviceId])
@@ -451,19 +490,19 @@ model ProvisioningProgress {
 }
 
 model QualityControlResult {
-  id              String   @id @default(cuid())
-  sessionId       String
-  deviceId        String
-  results         Json     // Quality control validation results
-  status          String   @default("PASSED") // PASSED, FAILED, WARNING
-  notes           String?  // Additional notes or comments
-  validatedBy     String?  // User who validated (if manual validation)
-  validatedAt     DateTime?
-  session         ProvisioningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  device          Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id          String              @id @default(cuid())
+  sessionId   String
+  deviceId    String
+  results     Json // Quality control validation results
+  status      String              @default("PASSED") // PASSED, FAILED, WARNING
+  notes       String? // Additional notes or comments
+  validatedBy String? // User who validated (if manual validation)
+  validatedAt DateTime?
+  session     ProvisioningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  device      Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
   @@unique([sessionId, deviceId])
   @@index([sessionId])
   @@index([deviceId])
@@ -506,91 +545,90 @@ enum FilePackageType {
 
 // Device Lifecycle Management Models
 model Department {
-  id            String   @id @default(cuid())
-  name          String   @unique
-  code          String?
-  parentId      String?
-  managerId     String?
-  managerEmail  String?
-  costCenter    String?
-  budgetCode    String?
-  location      String?
-  isActive      Boolean  @default(true)
-  
+  id           String  @id @default(cuid())
+  name         String  @unique
+  code         String?
+  parentId     String?
+  managerId    String?
+  managerEmail String?
+  costCenter   String?
+  budgetCode   String?
+  location     String?
+  isActive     Boolean @default(true)
+
   // Relationships
-  parent        Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
-  children      Department[] @relation("DepartmentHierarchy")
-  devices       Device[]
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children Department[] @relation("DepartmentHierarchy")
+  devices  Device[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([parentId])
   @@index([isActive])
 }
 
 model DeviceTransfer {
-  id                  String   @id @default(cuid())
-  deviceId            String
-  fromUserId          String?
-  fromUserEmail       String?
-  fromUserName        String?
-  fromDepartmentId    String?
-  fromDepartmentName  String?
-  toUserId            String?
-  toUserEmail         String?
-  toUserName          String?
-  toDepartmentId      String?
-  toDepartmentName    String?
-  transferReason      String?
-  transferNotes       String?
-  requestedBy         String
-  approvedBy          String?
-  status              TransferStatus @default(PENDING)
-  requestedAt         DateTime @default(now())
-  approvedAt          DateTime?
-  completedAt         DateTime?
-  
+  id                 String         @id @default(cuid())
+  deviceId           String
+  fromUserId         String?
+  fromUserEmail      String?
+  fromUserName       String?
+  fromDepartmentId   String?
+  fromDepartmentName String?
+  toUserId           String?
+  toUserEmail        String?
+  toUserName         String?
+  toDepartmentId     String?
+  toDepartmentName   String?
+  transferReason     String?
+  transferNotes      String?
+  requestedBy        String
+  approvedBy         String?
+  status             TransferStatus @default(PENDING)
+  requestedAt        DateTime       @default(now())
+  approvedAt         DateTime?
+  completedAt        DateTime?
+
   // Relationships
-  device              Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([deviceId])
   @@index([status])
   @@index([requestedAt])
 }
 
 model DeviceRetirement {
-  id                        String   @id @default(cuid())
-  deviceId                  String   @unique
-  retirementReason          String
-  retirementType            RetirementType @default(STANDARD)
-  dataWipeRequired          Boolean  @default(true)
-  dataWipeCompleted         Boolean  @default(false)
-  dataWipeCompletedAt       DateTime?
-  physicalReturn            Boolean  @default(false)
-  physicalReturnCompleted   Boolean  @default(false)
-  physicalReturnDate        DateTime?
-  disposalMethod            String?
-  disposalDate              DateTime?
-  certificateOfDestruction  String?
-  retiredBy                 String
-  approvedBy                String?
-  status                    RetirementStatus @default(INITIATED)
-  notes                     String?
-  
+  id                       String           @id @default(cuid())
+  deviceId                 String           @unique
+  retirementReason         String
+  retirementType           RetirementType   @default(STANDARD)
+  dataWipeRequired         Boolean          @default(true)
+  dataWipeCompleted        Boolean          @default(false)
+  dataWipeCompletedAt      DateTime?
+  physicalReturn           Boolean          @default(false)
+  physicalReturnCompleted  Boolean          @default(false)
+  physicalReturnDate       DateTime?
+  disposalMethod           String?
+  disposalDate             DateTime?
+  certificateOfDestruction String?
+  retiredBy                String
+  approvedBy               String?
+  status                   RetirementStatus @default(INITIATED)
+  notes                    String?
+
   // Relationships
-  device                    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
-  
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([status])
   @@index([createdAt])
 }
-
 
 // Lifecycle Management Enums
 enum TransferStatus {
@@ -625,83 +663,83 @@ enum RetirementType {
 
 // Enhanced APK Management System
 model APKRegistry {
-  id              String   @id @default(cuid())
-  packageName     String   @unique
-  appName         String
-  displayName     String
-  description     String?
-  category        APKCategory
-  version         String
-  versionCode     Int
-  minSdkVersion   Int      @default(21)
-  targetSdkVersion Int     @default(33)
-  fileSize        BigInt
-  filePath        String
-  fileHash        String
-  icon            String?
-  screenshots     String[]
-  permissions     String[]
-  features        String[]
-  
-  dataFolders     APKDataFolder[]
-  
+  id               String      @id @default(cuid())
+  packageName      String      @unique
+  appName          String
+  displayName      String
+  description      String?
+  category         APKCategory
+  version          String
+  versionCode      Int
+  minSdkVersion    Int         @default(21)
+  targetSdkVersion Int         @default(33)
+  fileSize         BigInt
+  filePath         String
+  fileHash         String
+  icon             String?
+  screenshots      String[]
+  permissions      String[]
+  features         String[]
+
+  dataFolders APKDataFolder[]
+
   supportedDeviceModels String[]
-  isActive        Boolean  @default(true)
-  uploadedBy      String
-  uploadedAt      DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  isActive              Boolean  @default(true)
+  uploadedBy            String
+  uploadedAt            DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
   provisioningApps ProvisioningApp[]
-  
+
   @@index([packageName])
   @@index([category])
   @@index([isActive])
 }
 
 model APKDataFolder {
-  id              String   @id @default(cuid())
-  apkId           String
-  name            String
-  description     String?
-  folderType      DataFolderType
-  sourcePath      String
-  targetPath      String
-  isRequired      Boolean  @default(true)
-  folderSize      BigInt?
-  fileCount       Int?
-  checksum        String?
-  
-  apk             APKRegistry @relation(fields: [apkId], references: [id], onDelete: Cascade)
-  
-  geographicScope String?
+  id          String         @id @default(cuid())
+  apkId       String
+  name        String
+  description String?
+  folderType  DataFolderType
+  sourcePath  String
+  targetPath  String
+  isRequired  Boolean        @default(true)
+  folderSize  BigInt?
+  fileCount   Int?
+  checksum    String?
+
+  apk APKRegistry @relation(fields: [apkId], references: [id], onDelete: Cascade)
+
+  geographicScope     String?
   applicableDistricts String[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([apkId])
   @@index([folderType])
 }
 
 model APKUploadSession {
-  id              String   @id @default(cuid())
+  id              String              @id @default(cuid())
   name            String
   description     String?
   status          UploadSessionStatus @default(PENDING)
-  totalFiles      Int      @default(0)
-  processedFiles  Int      @default(0)
-  successfulFiles Int      @default(0)
-  failedFiles     Int      @default(0)
+  totalFiles      Int                 @default(0)
+  processedFiles  Int                 @default(0)
+  successfulFiles Int                 @default(0)
+  failedFiles     Int                 @default(0)
   uploadPath      String
   uploadedBy      String
   startedAt       DateTime?
   completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  logs            Json?
-  errors          Json?
-  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  logs   Json?
+  errors Json?
+
   @@index([status])
   @@index([uploadedBy])
 }
@@ -736,7 +774,6 @@ enum UploadSessionStatus {
   CANCELLED
 }
 
-
 // ---------------------------------------------------------------------------
 // Enrollment and device credentials (findings F-02, F-13)
 //
@@ -755,26 +792,26 @@ enum UploadSessionStatus {
 
 /// A single-use, expiring code that authorises one device to enroll.
 model EnrollmentToken {
-  id             String    @id @default(cuid())
+  id          String    @id @default(cuid())
   /// SHA-256 of the plaintext code. The code itself is shown once, at creation,
   /// and is never stored — a leaked database gives no usable enrollment codes.
-  tokenHash      String    @unique
+  tokenHash   String    @unique
   /// User id of the administrator who issued it.
-  createdBy      String
+  createdBy   String
   /// Optional binding to a pre-registered device or hardware serial. When set,
   /// only that device may redeem the code.
-  boundSerial    String?
-  maxUses        Int       @default(1)
-  useCount       Int       @default(0)
-  expiresAt      DateTime
-  revokedAt      DateTime?
-  revokedBy      String?
+  boundSerial String?
+  maxUses     Int       @default(1)
+  useCount    Int       @default(0)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  revokedBy   String?
   /// deviceId that most recently redeemed this token, for audit.
-  lastUsedBy     String?
-  lastUsedAt     DateTime?
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  lastUsedBy  String?
+  lastUsedAt  DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([expiresAt])
   @@index([boundSerial])
@@ -784,16 +821,16 @@ model EnrollmentToken {
 /// are obtained by presenting one of these, which is re-checked against device
 /// status on every use — giving the revocation path device tokens never had.
 model DeviceRefreshToken {
-  id          String    @id @default(cuid())
+  id         String    @id @default(cuid())
   /// SHA-256 of the plaintext refresh token; the plaintext is never stored.
-  tokenHash   String    @unique
+  tokenHash  String    @unique
   /// Device.deviceId (the agent-facing identifier), not Device.id.
-  deviceId    String
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  revokedBy   String?
-  lastUsedAt  DateTime?
-  createdAt   DateTime  @default(now())
+  deviceId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  revokedBy  String?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([deviceId])
   @@index([expiresAt])

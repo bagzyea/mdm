@@ -11,9 +11,8 @@
 -- cast, and objects are created only if missing. A row whose status is not a valid enum
 -- value makes the cast fail and the whole migration roll back, rather than losing data.
 --
--- Deliberately NOT done, pending a decision: dropping the AssetRecord table and the
--- Device.assetTag column, which schema.prisma no longer declares but which may hold data
--- (AssetRecord appears to be the link to the asset-management system).
+-- AssetRecord and Device.assetTag are kept: schema.prisma declares them again, for the
+-- planned Asset Management System integration (docs/plans/ams-integration.md).
 
 -- Enums --------------------------------------------------------------------------------
 DO $$ BEGIN
@@ -189,3 +188,15 @@ ALTER TABLE "RemoteCommand" ADD CONSTRAINT "RemoteCommand_deviceId_fkey"
 ALTER TABLE "DeviceEvent" DROP CONSTRAINT IF EXISTS "DeviceEvent_deviceId_fkey";
 ALTER TABLE "DeviceEvent" ADD CONSTRAINT "DeviceEvent_deviceId_fkey"
   FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AMS link: the lifecycle migration made the asset-tag index partial (WHERE NOT NULL).
+-- A plain unique index is equivalent in Postgres (NULLs never collide) and is what the
+-- schema declares.
+DROP INDEX IF EXISTS "Device_assetTag_key";
+CREATE UNIQUE INDEX "Device_assetTag_key" ON "Device"("assetTag");
+
+-- Prisma maintains updatedAt itself; databases where the APK migration was repaired by
+-- hand carry a column default the schema does not declare.
+ALTER TABLE "APKDataFolder" ALTER COLUMN "updatedAt" DROP DEFAULT;
+ALTER TABLE "APKRegistry" ALTER COLUMN "updatedAt" DROP DEFAULT;
+ALTER TABLE "APKUploadSession" ALTER COLUMN "updatedAt" DROP DEFAULT;
