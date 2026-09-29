@@ -13,7 +13,6 @@ import {
   CircularProgress,
   Fade,
   Chip,
-  Link,
 } from '@mui/material';
 import {
   Visibility,
@@ -38,7 +37,6 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [showDefaultCreds, setShowDefaultCreds] = useState(true);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [sessionMessage, setSessionMessage] = useState<{message: string; type: 'info' | 'warning'} | null>(null);
   const { login } = useAuth();
@@ -152,21 +150,6 @@ const LoginPage: React.FC = () => {
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
-  const useDefaultCredentials = () => {
-    setCredentials({
-      username: 'admin',
-      password: 'admin123'
-    });
-    setShowDefaultCreds(false);
-  };
-
-  // Auto-hide default credentials after 10 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowDefaultCreds(false);
-    }, 15000);
-    return () => clearTimeout(timer);
-  }, []);
   return (
     <Box
       sx={{
@@ -271,7 +254,7 @@ const LoginPage: React.FC = () => {
           <Box component="form" onSubmit={handleSubmit}>
             <TextField
               fullWidth
-              label="Username"
+              label="Username or domain login"
               variant="outlined"
               value={credentials.username}
               onChange={handleInputChange('username')}
@@ -359,33 +342,11 @@ const LoginPage: React.FC = () => {
             </Button>
           </Box>
 
-          {/* Default Credentials Info */}
-          {showDefaultCreds && (
-            <Fade in={showDefaultCreds}>
-              <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'grey.300' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="caption" color="text.secondary" fontWeight="600">
-                    💡 Demo Credentials Available
-                  </Typography>
-                  <Link 
-                    component="button"
-                    variant="caption"
-                    onClick={useDefaultCredentials}
-                    sx={{ textDecoration: 'none' }}
-                  >
-                    Use Now
-                  </Link>
-                </Box>
-                <Typography variant="caption" display="block" sx={{ opacity: 0.8 }}>
-                  Username: <code>admin</code> • Password: <code>admin123</code>
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, fontSize: '0.65rem' }}>
-                  This message will disappear automatically
-                </Typography>
-              </Box>
-            </Fade>
-          )}
-          
+          {/* Sign-in help. A "demo credentials" panel used to publish admin/admin123 here. */}
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 3, textAlign: 'center' }}>
+            Sign in with your MDM username or your UBOS domain account (e.g. <code>jdoe</code> or <code>jdoe@ubos.local</code>).
+          </Typography>
+
           {/* Security Notice */}
           <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary" display="block">

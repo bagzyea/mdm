@@ -35,15 +35,18 @@ describe('Auth Schemas', () => {
       expect(error?.details?.[0]?.message).toContain('at least 6 characters');
     });
 
-    it('should reject non-alphanumeric username', () => {
-      const invalidData = {
-        username: 'test@user',
-        password: 'password123'
-      };
+    it.each(['admin@mdm.local', 'UBOS0\\jdoe', 'j.doe', 'jdoe@ubos.local'])(
+      'accepts a username, email or domain login: %s',
+      (username) => {
+        // Alphanumeric-only refused every email address, including the admin account's.
+        const { error } = loginSchema.validate({ username, password: 'password123' });
+        expect(error).toBeUndefined();
+      }
+    );
 
-      const { error } = loginSchema.validate(invalidData);
-      expect(error).toBeDefined();
-      expect(error?.details[0].message).toContain('alphanumeric characters');
+    it.each(['has space', 'x)(uid=*', '<script>'])('rejects %s', (username) => {
+      const { error } = loginSchema.validate({ username, password: 'password123' });
+      expect(error?.details[0].message).toContain('username, email address or domain login');
     });
   });
 

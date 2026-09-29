@@ -1,16 +1,20 @@
 const Joi = require('joi');
 
 // Login validation schema
+// Sign-in accepts an MDM username, an email address, or a directory login
+// (name, name@domain or DOMAIN\\name). This was alphanumeric-only, which refused every
+// email address — including the admin account's own — before the password was checked.
 export const loginSchema = Joi.object({
   username: Joi.string()
-    .alphanum()
+    .trim()
+    .pattern(/^[A-Za-z0-9._@\\-]+$/)
     .min(3)
-    .max(50)
+    .max(254)
     .required()
     .messages({
-      'string.alphanum': 'Username must contain only alphanumeric characters',
+      'string.pattern.base': 'Enter a username, email address or domain login',
       'string.min': 'Username must be at least 3 characters long',
-      'string.max': 'Username must not exceed 50 characters',
+      'string.max': 'Username must not exceed 254 characters',
       'any.required': 'Username is required'
     }),
   

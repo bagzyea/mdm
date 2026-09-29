@@ -13,6 +13,8 @@ import config from '../config/env';
 import { redactSensitive } from '../utils/redact';
 import { definedOnly } from '../utils/prisma';
 import prisma from '../db';
+import * as crypto from 'crypto';
+import { authenticateWithDirectory, DirectoryIdentity } from './directoryService';
 
 
 export class AuthService {
@@ -128,23 +130,41 @@ export class AuthService {
   }
 
   // User login
+  //
+  // A local MDM password is tried first. If that fails and Active Directory is
+  // configured, the same credentials are tried against the directory (see
+  // directoryService.ts); a successful bind is matched to an MDM account by username or
+  // email, which is where the role comes from. Every failure returns the same message,
+  // so the response does not reveal which accounts exist.
   async login(loginData: LoginRequest, ipAddress?: string, userAgent?: string): Promise<LoginResponse> {
-    // Try to find user by email first, then by username
-    const user = await prisma.user.findFirst({
+    const identifier = loginData.username.trim();
+
+    let user = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: loginData.username },
-          { username: loginData.username }
+          { email: { equals: identifier, mode: 'insensitive' } },
+          { username: { equals: identifier, mode: 'insensitive' } }
         ]
       }
     });
 
-    if (!user || !user.isActive) {
-      throw new Error('Invalid credentials');
+    let authenticated = !!user && user.isActive &&
+      (await this.verifyPassword(loginData.password, user.password));
+    let method: 'local' | 'directory' = 'local';
+
+    if (!authenticated) {
+      const directory = await authenticateWithDirectory(identifier, loginData.password);
+      if (directory.ok) {
+        user = (await this.findUserForDirectoryIdentity(directory.identity)) ??
+          (await this.provisionDirectoryUser(directory.identity));
+        authenticated = !!user && user.isActive;
+        method = 'directory';
+      } else if (directory.reason === 'unreachable' && !user) {
+        throw new Error('Invalid credentials (the directory could not be reached; try again shortly)');
+      }
     }
 
-    const isValidPassword = await this.verifyPassword(loginData.password, user.password);
-    if (!isValidPassword) {
+    if (!user || !authenticated) {
       throw new Error('Invalid credentials');
     }
 
@@ -168,6 +188,7 @@ export class AuthService {
     // Log login
     await this.logUserAction(user.id, 'LOGIN', 'auth', null, {
       loginTime: new Date(),
+      method,
       ipAddress,
       userAgent
     }, ipAddress, userAgent);
@@ -180,6 +201,46 @@ export class AuthService {
       refreshToken,
       expiresIn: this.JWT_EXPIRES_IN
     };
+  }
+
+  /** The MDM account a directory identity belongs to: by username, then by email. */
+  private async findUserForDirectoryIdentity(identity: DirectoryIdentity) {
+    const names = [identity.sAMAccountName].filter((v): v is string => !!v);
+    const emails = [identity.email, identity.userPrincipalName].filter((v): v is string => !!v);
+    if (names.length === 0 && emails.length === 0) return null;
+    return prisma.user.findFirst({
+      where: {
+        OR: [
+          ...names.map((n) => ({ username: { equals: n, mode: 'insensitive' as const } })),
+          ...emails.map((e) => ({ email: { equals: e, mode: 'insensitive' as const } }))
+        ]
+      }
+    });
+  }
+
+  /**
+   * Create an MDM account for a directory user with no account yet — only when
+   * LDAP_AUTO_PROVISION_ROLE names a role. Off by default: a domain login alone grants
+   * nothing until an administrator adds the person to MDM.
+   */
+  private async provisionDirectoryUser(identity: DirectoryIdentity) {
+    const role = process.env.LDAP_AUTO_PROVISION_ROLE?.trim() as UserRole | undefined;
+    const allowed: UserRole[] = ['VIEWER', 'OPERATOR', 'ADMIN'];
+    if (!role || !allowed.includes(role) || !identity.sAMAccountName) return null;
+
+    const email = identity.email ?? identity.userPrincipalName ?? `${identity.sAMAccountName}@directory.local`;
+    return prisma.user.create({
+      data: {
+        username: identity.sAMAccountName,
+        email,
+        // Never usable as a local password: directory users sign in through AD.
+        password: await this.hashPassword(crypto.randomBytes(32).toString('base64url')),
+        firstName: identity.firstName ?? identity.displayName ?? identity.sAMAccountName,
+        lastName: identity.lastName ?? '',
+        role,
+        createdBy: 'directory'
+      }
+    });
   }
 
   // Refresh token
