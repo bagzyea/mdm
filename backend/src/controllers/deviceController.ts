@@ -16,6 +16,8 @@ import { recordHeartbeat, DeviceNotAllowedError } from '../services/telemetrySer
 import { disconnectDevice } from '../socket/registry';
 import { serializeDevice } from '../utils/serialize';
 import logger from '../logger';
+import { getCommandService } from '../services/commandServiceInstance';
+import { sendCommandError } from '../services/commandService';
 
 
 export const getAllDevices = async (req: Request, res: Response) => {
@@ -374,37 +376,23 @@ export const sendCommand = async (req: Request<{ deviceId: string }>, res: Respo
   try {
     const { deviceId } = req.params;
     const commandPayload: CommandPayload = req.body;
-    
-    const device = await prisma.device.findUnique({
-      where: { deviceId }
-    });
-    
+
+    const device = await prisma.device.findUnique({ where: { deviceId }, select: { id: true } });
     if (!device) {
       res.status(404).json({ error: 'Device not found' });
       return;
     }
-    
-    const command = await prisma.remoteCommand.create({
-      data: definedOnly({
-        deviceId: device.id,
-        command: commandPayload.command,
-        parameters: commandPayload.parameters,
-        status: 'PENDING'
-      })
+
+    const { commands } = await getCommandService().createCommands({
+      deviceIds: [device.id],
+      command: commandPayload.command,
+      parameters: commandPayload.parameters
     });
-    
-    // Log command event
-    await prisma.deviceEvent.create({
-      data: {
-        deviceId: device.id,
-        eventType: 'COMMAND_SENT',
-        eventData: { commandId: command.id, command: commandPayload.command }
-      }
-    });
-    
-    res.status(201).json(command);
+
+    res.status(201).json(commands[0]);
   } catch (error) {
-    console.error('Error sending command:', error);
+    if (sendCommandError(res, error)) return;
+    logger.error(error, 'Error sending command');
     res.status(500).json({ error: 'Failed to send command' });
   }
 };

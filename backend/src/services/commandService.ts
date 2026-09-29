@@ -4,10 +4,141 @@ import prisma from '../db';
 import config from '../config/env';
 import logger from '../logger';
 import { deviceRoom } from '../socket/registry';
+import { isAgentCommand } from '@mdm/shared-types';
+import { Prisma, RemoteCommand } from '@prisma/client';
+import { isRevoked } from './devicePresence';
 
+/** The command is not one the agent implements, so queueing it could only fail. */
+export class UnsupportedCommandError extends Error {
+  readonly statusCode = 422;
+  readonly code = 'COMMAND_NOT_SUPPORTED';
+  constructor(readonly command: string) {
+    super(`The device agent does not implement ${command}`);
+    this.name = 'UnsupportedCommandError';
+  }
+}
+
+/** The request cannot be queued as given: bad parameters, or no eligible device. */
+export class CommandRequestError extends Error {
+  readonly statusCode = 400;
+  constructor(message: string, readonly code: string) {
+    super(message);
+    this.name = 'CommandRequestError';
+  }
+}
+
+/**
+ * Map a command-creation failure onto an HTTP response. Returns false for errors the
+ * caller should treat as unexpected.
+ */
+export function sendCommandError(res: { status(code: number): { json(body: unknown): unknown } }, error: unknown): boolean {
+  if (error instanceof UnsupportedCommandError || error instanceof CommandRequestError) {
+    res.status(error.statusCode).json({ error: error.message, code: error.code });
+    return true;
+  }
+  return false;
+}
+
+export interface CreateCommandsInput {
+  /** Device database ids or device serials; both are accepted. */
+  deviceIds: string[];
+  command: string;
+  parameters?: unknown;
+  /** Push to connected devices now. False leaves them for the queue and the agent poll. */
+  dispatch?: boolean;
+}
+
+export interface CreateCommandsResult {
+  commands: RemoteCommand[];
+  devicesRequested: number;
+  devicesFound: number;
+  /** Suspended, wiped or retired devices, which are never sent commands. */
+  devicesSkipped: string[];
+  notificationsSent: number;
+}
+
+/** Parameter rules for the commands that need them. */
+function validateCommandParameters(command: string, parameters: any): string | null {
+  switch (command) {
+    case 'APPLY_POLICY':
+    case 'REMOVE_POLICY':
+    case 'UPDATE_POLICY':
+      if (!parameters?.policyId) return 'Policy commands require policyId';
+      break;
+    case 'SET_KIOSK_MODE':
+      if (!parameters?.allowedApps?.length) return 'Kiosk mode requires at least one allowed app';
+      break;
+  }
+  return null;
+}
 
 export class CommandService {
   constructor(private io: SocketIOServer) { }
+
+  /**
+   * The one way a command is created.
+   *
+   * RemoteCommand rows used to be created in ten places — the command, device, security
+   * and policy controllers and the provisioning service — each with its own rules. Some
+   * pushed immediately and some waited for the queue; some skipped suspended devices and
+   * some did not; some logged an event. And nothing checked that the agent implemented
+   * the command at all. Every caller now goes through here.
+   *
+   * @throws UnsupportedCommandError when the agent does not implement the command.
+   * @throws CommandRequestError when parameters are invalid or no device is eligible.
+   */
+  async createCommands(input: CreateCommandsInput): Promise<CreateCommandsResult> {
+    const { deviceIds, command, parameters, dispatch = true } = input;
+
+    if (!isAgentCommand(command)) throw new UnsupportedCommandError(command);
+
+    const invalid = validateCommandParameters(command, parameters);
+    if (invalid) throw new CommandRequestError(invalid, 'INVALID_PARAMETERS');
+
+    const devices = await prisma.device.findMany({
+      where: { OR: [{ id: { in: deviceIds } }, { deviceId: { in: deviceIds } }] },
+      select: { id: true, deviceId: true, status: true, isRetired: true }
+    });
+
+    const eligible = devices.filter((d) => !isRevoked(d));
+    const devicesSkipped = devices.filter((d) => isRevoked(d)).map((d) => d.deviceId);
+
+    if (eligible.length === 0) {
+      throw new CommandRequestError('No eligible devices found for this command', 'NO_ELIGIBLE_DEVICES');
+    }
+
+    const params = (parameters ?? {}) as Prisma.InputJsonValue;
+    const commands = await prisma.remoteCommand.createManyAndReturn({
+      data: eligible.map((d) => ({ deviceId: d.id, command, parameters: params, status: 'PENDING' as const }))
+    });
+
+    await prisma.deviceEvent.createMany({
+      data: commands.map((c) => ({
+        deviceId: c.deviceId,
+        eventType: 'COMMAND_CREATED',
+        eventData: { commandId: c.id, command: c.command, parameters: params }
+      }))
+    });
+
+    let notificationsSent = 0;
+    if (dispatch) {
+      const serialById = new Map(eligible.map((d) => [d.id, d.deviceId]));
+      const results = await Promise.all(
+        commands.map((c) =>
+          this.notifyDeviceOfCommand(serialById.get(c.deviceId)!, c.id, command, c.parameters)
+        )
+      );
+      notificationsSent = results.filter(Boolean).length;
+    }
+
+    return {
+      commands,
+      devicesRequested: deviceIds.length,
+      devicesFound: devices.length,
+      devicesSkipped,
+      notificationsSent
+    };
+  }
 
   /**
    * Push a command to a connected device.
@@ -206,55 +337,11 @@ export class CommandService {
       throw new Error(`Unknown command template: ${commandTemplate}`);
     }
 
-    // Execute the template command
-    return this.executeCommand(template);
-  }
-
-  // Main command execution method
-  private async executeCommand(commandData: CreateCommandRequest) {
-    // Validate devices
-    const devices = await prisma.device.findMany({
-      where: {
-        id: { in: commandData.deviceIds },
-        status: { in: ['ENROLLED', 'ACTIVE'] }
-      }
-    });
-
-    if (devices.length === 0) {
-      throw new Error('No valid devices found');
-    }
-
-    // Create commands
-    const commands = await Promise.all(
-      devices.map(device =>
-        prisma.remoteCommand.create({
-          data: {
-            deviceId: device.id,
-            command: commandData.command,
-            parameters: commandData.parameters as any,
-            status: 'PENDING'
-          }
-        })
-      )
-    );
-
-    // Notify devices
-    const notifications = await Promise.all(
-      commands.map(cmd => {
-        const device = devices.find(d => d.id === cmd.deviceId);
-        return this.notifyDeviceOfCommand(
-          device!.deviceId,
-          cmd.id,
-          cmd.command as CommandType,
-          cmd.parameters
-        );
-      })
-    );
-
+    const result = await this.createCommands(template);
     return {
-      commands,
-      notificationsSent: notifications.filter(Boolean).length,
-      totalCommands: commands.length
+      commands: result.commands,
+      notificationsSent: result.notificationsSent,
+      totalCommands: result.commands.length
     };
   }
 }

@@ -34,15 +34,8 @@ import {
   Send,
   Lock,
   LockOpen,
-  DeleteForever,
   LocationOn,
-  RingVolume,
   PhoneAndroid,
-  Apps,
-  Wifi,
-  RestartAlt,
-  Security,
-  Screenshot,
   Refresh,
   CheckCircle,
   Error as ErrorIcon,
@@ -55,6 +48,7 @@ import {
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import StatusChip from '../../components/common/StatusChip';
+import type { CommandType } from '../../types';
 
 interface Command {
   id: string;
@@ -113,22 +107,17 @@ const CommandsPage: React.FC = () => {
     parameters: {},
   });
 
-  const commandTypes = [
+  // Only commands the device agent implements (AGENT_COMMANDS in @mdm/shared-types).
+  // This offered wipe, reboot, ring, screenshot, app install, Wi-Fi and lost mode, none
+  // of which the agent can execute; the backend now refuses them.
+  const commandTypes: Array<{ value: CommandType; label: string; icon: React.ReactElement; category: string }> = [
     { value: 'LOCK_DEVICE', label: 'Lock Device', icon: <Lock />, category: 'Security' },
     { value: 'UNLOCK_DEVICE', label: 'Unlock Device', icon: <LockOpen />, category: 'Security' },
-    { value: 'WIPE_DEVICE', label: 'Wipe Device', icon: <DeleteForever />, category: 'Security' },
     { value: 'LOCATE_DEVICE', label: 'Locate Device', icon: <LocationOn />, category: 'Location' },
-    { value: 'RING_DEVICE', label: 'Ring Device', icon: <RingVolume />, category: 'Location' },
-    { value: 'REBOOT_DEVICE', label: 'Reboot Device', icon: <RestartAlt />, category: 'Control' },
-    { value: 'SCREENSHOT', label: 'Take Screenshot', icon: <Screenshot />, category: 'Monitoring' },
     { value: 'GET_DEVICE_INFO', label: 'Get Device Info', icon: <PhoneAndroid />, category: 'Monitoring' },
-    { value: 'INSTALL_APP', label: 'Install Application', icon: <Apps />, category: 'Apps' },
-    { value: 'UNINSTALL_APP', label: 'Uninstall Application', icon: <Apps />, category: 'Apps' },
-    { value: 'SET_WIFI_CONFIG', label: 'Set WiFi Config', icon: <Wifi />, category: 'Network' },
-    { value: 'ENABLE_LOST_MODE', label: 'Enable Lost Mode', icon: <Security />, category: 'Security' },
-    { value: 'DISABLE_LOST_MODE', label: 'Disable Lost Mode', icon: <Security />, category: 'Security' },
     { value: 'SET_KIOSK_MODE', label: 'Enable Kiosk Mode', icon: <Tablet />, category: 'Control' },
     { value: 'EXIT_KIOSK_MODE', label: 'Disable Kiosk Mode', icon: <TabletAndroid />, category: 'Control' },
+    { value: 'SYNC_SETTINGS', label: 'Sync Settings', icon: <Refresh />, category: 'Control' },
   ];
 
   const fetchCommands = async () => {
@@ -233,18 +222,6 @@ const CommandsPage: React.FC = () => {
     switch (commandType) {
       case 'LOCK_DEVICE':
         return { message: 'Device locked by administrator' };
-      case 'WIPE_DEVICE':
-        return { factoryReset: true };
-      case 'RING_DEVICE':
-        return { duration: 30, volume: 100 };
-      case 'ENABLE_LOST_MODE':
-        return { message: 'This device has been lost. Please contact your administrator.' };
-      case 'INSTALL_APP':
-        return { packageName: '', downloadUrl: '' };
-      case 'UNINSTALL_APP':
-        return { packageName: '' };
-      case 'SET_WIFI_CONFIG':
-        return { ssid: '', password: '', security: 'WPA2' };
       default:
         return {};
     }
@@ -315,7 +292,6 @@ const CommandsPage: React.FC = () => {
 
     switch (formData.commandType) {
       case 'LOCK_DEVICE':
-      case 'ENABLE_LOST_MODE':
         return (
           <TextField
             fullWidth
@@ -328,102 +304,6 @@ const CommandsPage: React.FC = () => {
           />
         );
       
-      case 'RING_DEVICE':
-        return (
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Duration (seconds)"
-                type="number"
-                value={formData.parameters.duration || 30}
-                onChange={(e) => handleParameterChange('duration', parseInt(e.target.value))}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Volume (%)"
-                type="number"
-                value={formData.parameters.volume || 100}
-                onChange={(e) => handleParameterChange('volume', parseInt(e.target.value))}
-                inputProps={{ min: 0, max: 100 }}
-              />
-            </Grid>
-          </Grid>
-        );
-
-      case 'INSTALL_APP':
-        return (
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Package Name"
-                value={formData.parameters.packageName || ''}
-                onChange={(e) => handleParameterChange('packageName', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Download URL"
-                value={formData.parameters.downloadUrl || ''}
-                onChange={(e) => handleParameterChange('downloadUrl', e.target.value)}
-              />
-            </Grid>
-          </Grid>
-        );
-
-      case 'UNINSTALL_APP':
-        return (
-          <TextField
-            fullWidth
-            label="Package Name"
-            value={formData.parameters.packageName || ''}
-            onChange={(e) => handleParameterChange('packageName', e.target.value)}
-            sx={{ mt: 2 }}
-          />
-        );
-
-      case 'SET_WIFI_CONFIG':
-        return (
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Network SSID"
-                value={formData.parameters.ssid || ''}
-                onChange={(e) => handleParameterChange('ssid', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Security</InputLabel>
-                <Select
-                  value={formData.parameters.security || 'WPA2'}
-                  label="Security"
-                  onChange={(e) => handleParameterChange('security', e.target.value)}
-                >
-                  <MenuItem value="WPA2">WPA2</MenuItem>
-                  <MenuItem value="WPA3">WPA3</MenuItem>
-                  <MenuItem value="WEP">WEP</MenuItem>
-                  <MenuItem value="OPEN">Open</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Password"
-                type="password"
-                value={formData.parameters.password || ''}
-                onChange={(e) => handleParameterChange('password', e.target.value)}
-              />
-            </Grid>
-          </Grid>
-        );
-
       default:
         return null;
     }

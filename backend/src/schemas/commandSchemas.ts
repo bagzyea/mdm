@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { AGENT_COMMANDS } from '@mdm/shared-types';
 
 /**
  * Request validation for the command API (finding F-05).
@@ -10,34 +11,11 @@ import Joi from 'joi';
  */
 
 /**
- * Every command the agent understands, from src/types/commands.ts. Listing them
- * explicitly means an unrecognised command is rejected at the edge rather than being
- * written to the queue and failing on the device.
+ * Every command the agent executes, from @mdm/shared-types. An unrecognised or
+ * unimplemented command is rejected at the edge rather than being written to the queue
+ * and failing on the device. commandContract.test.ts checks this against the agent.
  */
-export const COMMAND_TYPES = [
-  'LOCK_DEVICE',
-  'UNLOCK_DEVICE',
-  'WIPE_DEVICE',
-  'REBOOT_DEVICE',
-  'LOCATE_DEVICE',
-  'RING_DEVICE',
-  'INSTALL_APP',
-  'UNINSTALL_APP',
-  'APPLY_POLICY',
-  'REMOVE_POLICY',
-  'UPDATE_POLICY',
-  'GET_DEVICE_INFO',
-  'SET_KIOSK_MODE',
-  'EXIT_KIOSK_MODE',
-  'SET_WIFI_CONFIG',
-  'CLEAR_PASSCODE',
-  'ENABLE_LOST_MODE',
-  'DISABLE_LOST_MODE',
-  'TAKE_SCREENSHOT',
-  'GET_APP_LIST',
-  'SYNC_SETTINGS',
-  'PROVISION_DEVICE',
-] as const;
+export const COMMAND_TYPES = AGENT_COMMANDS;
 
 /**
  * Command parameters. Known fields are typed; the object still permits additional keys

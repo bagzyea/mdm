@@ -233,8 +233,14 @@ const DevicesPage: React.FC = () => {
           await apiService.sendCommand(device.id, 'UNLOCK_DEVICE', {});
           break;
         case 'wipe':
-          if (window.confirm('Are you sure you want to wipe this device? This action cannot be undone.')) {
-            await apiService.sendCommand(device.id, 'WIPE_DEVICE', {});
+          // The agent cannot erase a tablet yet (that needs Device Owner), so this used to
+          // queue a WIPE_DEVICE command that failed on the device. What the server can do
+          // is revoke it: marking it WIPED cuts its connection and credentials at once.
+          if (window.confirm(
+            'Revoke this device? It will be disconnected and refused from now on.\n\n' +
+            'Data on the tablet is NOT erased: remote erase is not supported by the agent yet.'
+          )) {
+            await apiService.updateDeviceStatus(device.deviceId, 'WIPED');
           } else {
             return; // User cancelled
           }
@@ -668,7 +674,7 @@ const DevicesPage: React.FC = () => {
           onClick={() => selectedDevice && handleDeviceAction('wipe', selectedDevice)}
           sx={{ color: 'warning.main' }}
         >
-          <DeleteForever sx={{ mr: 1 }} /> Wipe Device
+          <DeleteForever sx={{ mr: 1 }} /> Revoke (mark wiped)
         </MenuItem>
         <MenuItem
           onClick={() => selectedDevice && handleDeviceAction('delete', selectedDevice)}

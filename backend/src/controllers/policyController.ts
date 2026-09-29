@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { CreatePolicyRequest, UpdatePolicyRequest, PolicyRules } from '../types/policy';
 import prisma from '../db';
+import { getCommandService } from '../services/commandServiceInstance';
+import { CommandRequestError } from '../services/commandService';
 
 
 // Get all policies with pagination and filtering
@@ -309,55 +311,46 @@ function validatePolicyRules(type: string, rules: PolicyRules): string | null {
   return null;
 }
 
+/**
+ * Policy delivery goes through CommandService.createCommands like every other command,
+ * so it is pushed to connected tablets immediately rather than waiting up to 30 seconds
+ * for the queue, and never goes to a suspended or wiped device.
+ */
+async function queuePolicyCommand(
+  command: 'APPLY_POLICY' | 'REMOVE_POLICY' | 'UPDATE_POLICY',
+  policyId: string,
+  deviceIds: string[]
+) {
+  if (deviceIds.length === 0) return;
+  try {
+    await getCommandService().createCommands({ deviceIds, command, parameters: { policyId } });
+  } catch (error) {
+    // Every target suspended or retired: nothing to deliver, and not a policy error.
+    if (error instanceof CommandRequestError && error.code === 'NO_ELIGIBLE_DEVICES') return;
+    throw error;
+  }
+}
+
 // Helper function to apply policy to devices
 async function applyPolicyToDevices(policyId: string, deviceIds: string[]) {
-  const commands = deviceIds.map(deviceId => ({
-    deviceId,
-    command: 'APPLY_POLICY',
-    parameters: { policyId },
-    status: 'PENDING' as const
-  }));
-
-  await prisma.remoteCommand.createMany({
-    data: commands
-  });
+  await queuePolicyCommand('APPLY_POLICY', policyId, deviceIds);
 
   // Log policy application events
-  const events = deviceIds.map(deviceId => ({
-    deviceId,
-    eventType: 'POLICY_APPLIED',
-    eventData: { policyId } as any
-  }));
-
   await prisma.deviceEvent.createMany({
-    data: events
+    data: deviceIds.map(deviceId => ({
+      deviceId,
+      eventType: 'POLICY_APPLIED',
+      eventData: { policyId }
+    }))
   });
 }
 
 // Helper function to remove policy from devices
 async function removePolicyFromDevices(policyId: string, deviceIds: string[]) {
-  const commands = deviceIds.map(deviceId => ({
-    deviceId,
-    command: 'REMOVE_POLICY',
-    parameters: { policyId },
-    status: 'PENDING' as const
-  }));
-
-  await prisma.remoteCommand.createMany({
-    data: commands
-  });
+  await queuePolicyCommand('REMOVE_POLICY', policyId, deviceIds);
 }
 
 // Helper function to push policy updates to devices
 async function pushPolicyUpdates(policyId: string, deviceIds: string[]) {
-  const commands = deviceIds.map(deviceId => ({
-    deviceId,
-    command: 'UPDATE_POLICY',
-    parameters: { policyId },
-    status: 'PENDING' as const
-  }));
-
-  await prisma.remoteCommand.createMany({
-    data: commands
-  });
+  await queuePolicyCommand('UPDATE_POLICY', policyId, deviceIds);
 }

@@ -200,3 +200,61 @@ describe('CommandService', () => {
     });
   });
 });
+
+describe('CommandService.createCommands — the one creation path', () => {
+  const { UnsupportedCommandError, CommandRequestError } = jest.requireActual('../services/commandService');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (mockPrisma.device as any).findMany = jest.fn();
+    (mockPrisma.remoteCommand as any).createManyAndReturn = jest.fn();
+    (mockPrisma.deviceEvent as any).createMany = jest.fn();
+  });
+
+  const service = () =>
+    new CommandService({
+      to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+      in: jest.fn().mockReturnValue({ fetchSockets: jest.fn().mockResolvedValue([]) }),
+    } as any);
+
+  it('refuses a command the agent does not implement, before touching the database', async () => {
+    await expect(service().createCommands({ deviceIds: ['d1'], command: 'WIPE_DEVICE' })).rejects.toBeInstanceOf(
+      UnsupportedCommandError
+    );
+    expect((mockPrisma.device as any).findMany).not.toHaveBeenCalled();
+  });
+
+  it('requires a policyId for policy commands', async () => {
+    await expect(service().createCommands({ deviceIds: ['d1'], command: 'APPLY_POLICY' })).rejects.toBeInstanceOf(
+      CommandRequestError
+    );
+  });
+
+  it('never queues commands for suspended, wiped or retired devices', async () => {
+    (mockPrisma.device as any).findMany.mockResolvedValue([
+      { id: 'db-1', deviceId: 'tab-1', status: 'INACTIVE', isRetired: false },
+      { id: 'db-2', deviceId: 'tab-2', status: 'SUSPENDED', isRetired: false },
+      { id: 'db-3', deviceId: 'tab-3', status: 'ACTIVE', isRetired: true },
+    ]);
+    (mockPrisma.remoteCommand as any).createManyAndReturn.mockImplementation(({ data }: any) =>
+      data.map((d: any, i: number) => ({ id: `cmd-${i}`, ...d }))
+    );
+
+    const result = await service().createCommands({ deviceIds: ['tab-1', 'tab-2', 'tab-3'], command: 'LOCK_DEVICE' });
+
+    // The offline (INACTIVE) tablet is still queued — it collects the command by poll.
+    expect(result.commands.map((c: any) => c.deviceId)).toEqual(['db-1']);
+    expect(result.devicesSkipped.sort()).toEqual(['tab-2', 'tab-3']);
+    expect((mockPrisma.deviceEvent as any).createMany).toHaveBeenCalled();
+  });
+
+  it('reports no eligible devices when every target is revoked', async () => {
+    (mockPrisma.device as any).findMany.mockResolvedValue([
+      { id: 'db-2', deviceId: 'tab-2', status: 'WIPED', isRetired: false },
+    ]);
+
+    await expect(service().createCommands({ deviceIds: ['tab-2'], command: 'LOCK_DEVICE' })).rejects.toMatchObject({
+      code: 'NO_ELIGIBLE_DEVICES',
+    });
+  });
+});

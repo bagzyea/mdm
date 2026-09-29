@@ -7,7 +7,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      // Compiled from source, so the CommonJS build of the package never reaches Vite.
+      '@mdm/shared-types': path.resolve(__dirname, '../integration/shared-types/src/index.ts')
     }
   },
   server: {

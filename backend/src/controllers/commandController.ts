@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
-import { CreateCommandRequest, CommandResult, CommandType } from '../types/commands';
+import { CreateCommandRequest, CommandResult } from '../types/commands';
 import { getCommandService } from '../services/commandServiceInstance';
+import { sendCommandError } from '../services/commandService';
+import logger from '../logger';
 import prisma from '../db';
 
 
@@ -104,94 +106,27 @@ export const getCommandById = async (req: Request<{ id: string }>, res: Response
 export const createCommand = async (req: Request, res: Response): Promise<void> => {
   try {
     const commandData: CreateCommandRequest = req.body;
-    
-    const devices = await prisma.device.findMany({
-      where: { 
-        OR: [
-          { id: { in: commandData.deviceIds } },
-          { deviceId: { in: commandData.deviceIds } }
-        ]
-      }
+
+    // executeAt is accepted but not yet honoured: there is no column to hold it, so a
+    // scheduled command is only held back from the immediate push and goes out on the
+    // next queue pass. Scheduling proper is tracked separately.
+    const result = await getCommandService().createCommands({
+      deviceIds: commandData.deviceIds,
+      command: commandData.command,
+      parameters: commandData.parameters,
+      dispatch: !commandData.executeAt
     });
-
-    if (devices.length === 0) {
-      res.status(400).json({ error: 'No valid devices found for command execution' });
-      return;
-    }
-
-    if (devices.length !== commandData.deviceIds.length) {
-      const foundIds = devices.map(d => d.id);
-      const missingIds = commandData.deviceIds.filter(id => !foundIds.includes(id));
-      console.warn(`Some devices not found: ${missingIds.join(', ')}`);
-    }
-
-    // Validate command parameters
-    const validationError = validateCommandParameters(commandData.command, commandData.parameters);
-    if (validationError) {
-      res.status(400).json({ error: validationError });
-      return;
-    }
-
-    // Create commands for each device
-    const commandPromises = devices.map(device =>
-      prisma.remoteCommand.create({
-        data: {
-          deviceId: device.id,
-          command: commandData.command,
-          parameters: commandData.parameters as any,
-          status: commandData.executeAt ? 'PENDING' : 'PENDING'
-        }
-      })
-    );
-
-    const createdCommands = await Promise.all(commandPromises);
-
-    // Log command creation events
-    const eventPromises = createdCommands.map(cmd =>
-      prisma.deviceEvent.create({
-        data: {
-          deviceId: cmd.deviceId,
-          eventType: 'COMMAND_CREATED',
-          eventData: {
-            commandId: cmd.id,
-            command: cmd.command,
-            parameters: cmd.parameters
-          } as any
-        }
-      })
-    );
-
-    await Promise.all(eventPromises);
-
-    // If not scheduled, immediately push commands to devices via WebSocket
-    if (!commandData.executeAt) {
-      try {
-        const commandService = getCommandService();
-        const notificationPromises = createdCommands.map(cmd => {
-          const device = devices.find(d => d.id === cmd.deviceId);
-          return commandService.notifyDeviceOfCommand(
-            device!.deviceId,
-            cmd.id,
-            cmd.command as CommandType,
-            cmd.parameters
-          );
-        });
-        await Promise.all(notificationPromises);
-      } catch (error) {
-        console.warn('Warning: Could not push commands via WebSocket, will be delivered via polling:', error);
-        // Fall back to queue for offline devices
-        await queueCommandsForExecution(createdCommands.map(c => c.id));
-      }
-    }
 
     res.status(201).json({
-      message: `Command sent to ${createdCommands.length} devices`,
-      commands: createdCommands,
-      devicesFound: devices.length,
-      devicesRequested: commandData.deviceIds.length
+      message: `Command sent to ${result.commands.length} devices`,
+      commands: result.commands,
+      devicesFound: result.devicesFound,
+      devicesRequested: result.devicesRequested,
+      devicesSkipped: result.devicesSkipped
     });
   } catch (error) {
-    console.error('Error creating command:', error);
+    if (sendCommandError(res, error)) return;
+    logger.error(error, 'Error creating command');
     res.status(500).json({ error: 'Failed to create command' });
   }
 };
@@ -386,52 +321,6 @@ export const bulkCommandOperation = async (req: Request, res: Response): Promise
     res.status(500).json({ error: 'Failed to perform bulk operation' });
   }
 };
-
-// Helper functions
-function validateCommandParameters(command: CommandType, parameters?: any): string | null {
-  switch (command) {
-    case 'INSTALL_APP':
-      if (!parameters?.packageName && !parameters?.appUrl) {
-        return 'App installation requires either packageName or appUrl';
-      }
-      break;
-    case 'UNINSTALL_APP':
-      if (!parameters?.packageName) {
-        return 'App uninstallation requires packageName';
-      }
-      break;
-    case 'APPLY_POLICY':
-    case 'REMOVE_POLICY':
-    case 'UPDATE_POLICY':
-      if (!parameters?.policyId) {
-        return 'Policy commands require policyId';
-      }
-      break;
-    case 'SET_WIFI_CONFIG':
-      if (!parameters?.ssid) {
-        return 'WiFi configuration requires SSID';
-      }
-      break;
-    case 'SET_KIOSK_MODE':
-      if (!parameters?.allowedApps?.length) {
-        return 'Kiosk mode requires at least one allowed app';
-      }
-      break;
-  }
-  return null;
-}
-
-async function queueCommandsForExecution(commandIds: string[]) {
-  // Update commands to SENT status
-  await prisma.remoteCommand.updateMany({
-    where: { id: { in: commandIds } },
-    data: { status: 'SENT' }
-  });
-
-  // In a real implementation, this would notify devices via WebSocket
-  // or push notification that they have pending commands
-  console.log(`Queued ${commandIds.length} commands for execution`);
-}
 
 async function handleCommandResult(command: any, result: CommandResult) {
   // Handle specific command results

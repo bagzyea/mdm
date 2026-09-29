@@ -7,8 +7,8 @@ import {
 import { getCommandService } from './commandServiceInstance';
 import { definedOnly } from '../utils/prisma';
 import { signStoredApkReference } from './signedDownloads';
-import { CommandType } from '../types/commands';
 import prisma from '../db';
+import logger from '../logger';
 
 
 interface ProvisioningOptions {
@@ -97,15 +97,13 @@ export class ProvisioningService {
         securityConfig: profile.securityConfig || null
       };
 
-      // Step 3: Create RemoteCommand in database
-      const remoteCommand = await prisma.remoteCommand.create({
-        data: {
-          deviceId: device.id,
-          command: 'PROVISION_DEVICE' as CommandType,
-          parameters: payload,
-          status: 'PENDING'
-        }
+      // Step 3: Create the command and push it if the device is connected
+      const { commands } = await getCommandService().createCommands({
+        deviceIds: [device.id],
+        command: 'PROVISION_DEVICE',
+        parameters: payload
       });
+      const remoteCommand = commands[0]!;
 
       // Step 4: Update progress to PENDING
       await this.updateProgress(session.id, device.id, 'PENDING', {
@@ -117,15 +115,6 @@ export class ProvisioningService {
           details: { commandId: remoteCommand.id }
         }]
       });
-
-      // Step 5: Send command to device via WebSocket
-      const commandService = getCommandService();
-      await commandService.notifyDeviceOfCommand(
-        device.deviceId,
-        remoteCommand.id,
-        'PROVISION_DEVICE' as CommandType,
-        payload
-      );
 
       console.log(`Provisioning command sent to device ${device.deviceId} with command ID ${remoteCommand.id}`);
       // Device will report progress back via socket.on('provisioningProgress')
@@ -172,302 +161,81 @@ export class ProvisioningService {
     await this.sendLog(sessionId, device.id, 'INFO', 'Device validation passed');
   }
 
+  /**
+   * Deploy applications to devices through the agent's PROVISION_DEVICE command.
+   *
+   * This used to run a simulation on the server: two-second sleeps standing in for
+   * downloads, a hash "check" that only tested the hash's length, INSTALL_APP and
+   * GRANT_PERMISSIONS commands the agent does not implement, a one-second sleep standing
+   * in for validation — and then it marked every device and the session COMPLETED. The
+   * operator saw a successful deployment that had not happened, and the HTTP request
+   * blocked for the whole simulation.
+   *
+   * The agent's provisioning executor already downloads, verifies and installs a list of
+   * apps and reports progress per device over `provisioningProgress`, which updates the
+   * session counters (see src/server.ts). So this now sends that, and leaves completion
+   * to the devices' own reports.
+   */
   async startBulkApplicationDeployment(
     sessionId: string,
     applications: any[],
     devices: any[],
-    options: {
-      parallelLimit?: number;
-      retryAttempts?: number;
-      skipDependencies?: boolean;
-      validateBeforeInstall?: boolean;
-    } = {}
+    _options: Record<string, unknown> = {}
   ) {
-    const {
-      parallelLimit = 3,
-      retryAttempts = 3,
-      skipDependencies = false,
-      validateBeforeInstall = true
-    } = options;
-
     try {
-      // Update session status
       await prisma.provisioningSession.update({
         where: { id: sessionId },
-        data: {
-          status: 'IN_PROGRESS',
-          startedAt: new Date()
-        }
+        data: { status: 'IN_PROGRESS', startedAt: new Date() }
       });
 
-      // Process devices in parallel batches
-      const batches = this.createBatches(devices, parallelLimit);
+      const payload = {
+        sessionId,
+        // The agent requires a profileId; a bulk deployment has none of its own.
+        profileId: `bulk-deployment:${sessionId}`,
+        apps: applications.map((app: any, index: number) => ({
+          packageName: app.packageName,
+          appName: app.appName ?? app.packageName,
+          // Signed at dispatch — see the note in provisionDevice above.
+          apkUrl: signStoredApkReference(app.apkUrl) ?? app.apkUrl,
+          apkHash: app.apkHash,
+          permissions: app.requiredPermissions || [],
+          installOrder: app.installOrder ?? index,
+          isRequired: app.isRequired ?? true
+        })),
+        networkConfig: null,
+        securityConfig: null
+      };
 
-      for (const batch of batches) {
-        // Check if session is still active
-        const session = await prisma.provisioningSession.findUnique({
-          where: { id: sessionId }
-        });
+      for (const device of devices) {
+        try {
+          const { commands } = await getCommandService().createCommands({
+            deviceIds: [device.id],
+            command: 'PROVISION_DEVICE',
+            parameters: payload
+          });
 
-        if (!session || session.status === 'CANCELLED') {
-          break;
+          await this.updateProgress(sessionId, device.id, 'PENDING', {
+            currentStep: 'Deployment sent to device',
+            completedSteps: 0,
+            totalSteps: applications.length,
+            logs: [{
+              timestamp: new Date(),
+              level: 'INFO',
+              message: 'Deployment command queued for device',
+              details: { commandId: commands[0]?.id }
+            }]
+          });
+        } catch (error) {
+          await this.updateProgress(sessionId, device.id, 'FAILED', {
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorCode: 'COMMAND_SEND_FAILED'
+          });
         }
-
-        // Process batch in parallel
-        await Promise.all(
-          batch.map(device =>
-            this.deployApplicationsToDevice(sessionId, device, applications, {
-              retryAttempts,
-              skipDependencies,
-              validateBeforeInstall
-            }).catch(error => {
-              console.error(`Error deploying applications to device ${device.deviceId}:`, error);
-              this.updateProgress(sessionId, device.id, 'FAILED', {
-                errorMessage: error.message,
-                errorCode: 'DEPLOYMENT_ERROR'
-              });
-            })
-          )
-        );
       }
-
-      // Update session status to completed
-      await prisma.provisioningSession.update({
-        where: { id: sessionId },
-        data: {
-          status: 'COMPLETED',
-          completedAt: new Date()
-        }
-      });
-
     } catch (error) {
-      console.error('Error in bulk application deployment:', error);
+      logger.error(error, 'Error in bulk application deployment');
       await this.handleSessionError(sessionId, error as Error);
     }
-  }
-
-  private async deployApplicationsToDevice(
-    sessionId: string,
-    device: any,
-    applications: any[],
-    options: {
-      retryAttempts: number;
-      skipDependencies: boolean;
-      validateBeforeInstall: boolean;
-    }
-  ) {
-    const { retryAttempts, validateBeforeInstall } = options;
-    let attempt = 0;
-
-    while (attempt < retryAttempts) {
-      try {
-        // Update status to downloading apps
-        await this.updateProgress(sessionId, device.id, 'DOWNLOADING_APPS', {
-          currentStep: 'Downloading applications',
-          completedSteps: 0,
-          totalSteps: applications.length
-        });
-
-        // Step 1: Validate device compatibility
-        if (validateBeforeInstall) {
-          await this.validateDeviceCompatibility(sessionId, device, applications);
-        }
-
-        // Step 2: Download applications
-        const downloadedApps = await this.downloadApplications(sessionId, device, applications);
-
-        // Step 3: Install applications
-        await this.updateProgress(sessionId, device.id, 'INSTALLING_APPS', {
-          currentStep: 'Installing applications',
-          completedSteps: 0,
-          totalSteps: applications.length
-        });
-
-        for (let i = 0; i < downloadedApps.length; i++) {
-          const app = downloadedApps[i];
-          
-          await this.updateProgress(sessionId, device.id, 'INSTALLING_APPS', {
-            currentStep: `Installing ${app.appName}`,
-            completedSteps: i,
-            totalSteps: applications.length
-          });
-
-          // Install application
-          await this.installApplication(device, app);
-
-          // Grant permissions if required
-          if (app.requiredPermissions && app.requiredPermissions.length > 0) {
-            await this.grantAppPermissions(device, app);
-          }
-
-          // Update progress
-          await this.updateProgress(sessionId, device.id, 'INSTALLING_APPS', {
-            currentStep: `Installed ${app.appName}`,
-            completedSteps: i + 1,
-            totalSteps: applications.length
-          });
-        }
-
-        // Step 4: Validate installation
-        await this.updateProgress(sessionId, device.id, 'VALIDATING', {
-          currentStep: 'Validating installation',
-          completedSteps: applications.length,
-          totalSteps: applications.length
-        });
-
-        await this.validateApplicationInstallation(sessionId, device, applications);
-
-        // Step 5: Mark as completed
-        await this.updateProgress(sessionId, device.id, 'COMPLETED', {
-          currentStep: 'Deployment completed successfully',
-          completedSteps: applications.length,
-          totalSteps: applications.length,
-          completedAt: new Date()
-        });
-
-        break; // Success, exit retry loop
-
-      } catch (error) {
-        attempt++;
-        console.error(`Attempt ${attempt} failed for device ${device.deviceId}:`, error);
-
-        if (attempt >= retryAttempts) {
-          await this.updateProgress(sessionId, device.id, 'FAILED', {
-            errorMessage: `Failed after ${retryAttempts} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            errorCode: 'DEPLOYMENT_FAILED'
-          });
-          throw error;
-        }
-
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
-      }
-    }
-  }
-
-  private async validateDeviceCompatibility(sessionId: string, device: any, applications: any[]) {
-    // Check device storage
-    const requiredStorage = applications.reduce((total, app) => total + (app.fileSize || 0), 0);
-    const availableStorage = device.availableStorage || 0;
-
-    if (availableStorage < requiredStorage) {
-      throw new Error(`Insufficient storage. Required: ${requiredStorage}, Available: ${availableStorage}`);
-    }
-
-    // Check Android version compatibility
-    const deviceSdkVersion = device.sdkVersion || 0;
-    for (const app of applications) {
-      if (app.minSdkVersion && deviceSdkVersion < app.minSdkVersion) {
-        throw new Error(`Device SDK version ${deviceSdkVersion} is below required ${app.minSdkVersion} for ${app.appName}`);
-      }
-    }
-
-    await this.sendLog(sessionId, device.id, 'INFO', 'Device compatibility validation passed');
-  }
-
-  private async downloadApplications(sessionId: string, device: any, applications: any[]) {
-    const downloadedApps = [];
-
-    for (const app of applications) {
-      try {
-        await this.sendLog(sessionId, device.id, 'INFO', `Downloading ${app.appName}...`);
-        
-        // Simulate download process
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Validate download (check file integrity)
-        if (app.apkHash) {
-          // In real implementation, verify the downloaded APK hash
-          await this.verifyApkIntegrity(app);
-        }
-
-        downloadedApps.push(app);
-        await this.sendLog(sessionId, device.id, 'INFO', `Downloaded ${app.appName} successfully`);
-      } catch (error) {
-        throw new Error(`Failed to download ${app.appName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-
-    return downloadedApps;
-  }
-
-  private async verifyApkIntegrity(app: any) {
-    // In real implementation, verify APK hash
-    // For now, just simulate the verification
-    if (app.apkHash && app.apkHash.length < 10) {
-      throw new Error('Invalid APK hash');
-    }
-  }
-
-  private async validateApplicationInstallation(sessionId: string, device: any, applications: any[]) {
-    for (const app of applications) {
-      try {
-        await this.sendLog(sessionId, device.id, 'INFO', `Validating ${app.appName} installation...`);
-        
-        // In real implementation, check if app is actually installed
-        // For now, just simulate validation
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        await this.sendLog(sessionId, device.id, 'INFO', `${app.appName} installation validated successfully`);
-      } catch (error) {
-        throw new Error(`Failed to validate ${app.appName} installation: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-  }
-
-  private async installApplication(device: any, app: any): Promise<void> {
-    // Note: In the OTA model, app installation happens on the device via PROVISION_DEVICE command
-    // This is a placeholder for legacy bulk deployment feature
-    // Should be refactored to send PROVISION_DEVICE command instead
-    const commandService = getCommandService();
-    const command = await prisma.remoteCommand.create({
-      data: {
-        deviceId: device.id,
-        command: 'INSTALL_APP' as CommandType,
-        parameters: {
-          packageName: app.packageName,
-          // Signed at dispatch — see the note in buildProvisioningPayload above.
-          apkUrl: signStoredApkReference(app.apkUrl) ?? app.apkUrl,
-          apkHash: app.apkHash
-        },
-        status: 'PENDING'
-      }
-    });
-
-    await commandService.notifyDeviceOfCommand(
-      device.deviceId,
-      command.id,
-      'INSTALL_APP' as CommandType,
-      command.parameters
-    );
-  }
-
-  private async grantAppPermissions(device: any, app: any): Promise<void> {
-    // Note: In the OTA model, permission granting happens on the device via PROVISION_DEVICE command
-    // This is a placeholder for legacy bulk deployment feature
-    if (!app.requiredPermissions || app.requiredPermissions.length === 0) {
-      return;
-    }
-
-    const commandService = getCommandService();
-    const command = await prisma.remoteCommand.create({
-      data: {
-        deviceId: device.id,
-        command: 'GRANT_PERMISSIONS' as CommandType,
-        parameters: {
-          packageName: app.packageName,
-          permissions: app.requiredPermissions
-        },
-        status: 'PENDING'
-      }
-    });
-
-    await commandService.notifyDeviceOfCommand(
-      device.deviceId,
-      command.id,
-      'GRANT_PERMISSIONS' as CommandType,
-      command.parameters
-    );
   }
 
   async applyFieldConfiguration(

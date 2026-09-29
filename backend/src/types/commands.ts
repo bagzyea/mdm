@@ -1,28 +1,8 @@
 // Remote command types and interfaces
 
-export type CommandType =
-  | 'LOCK_DEVICE'
-  | 'UNLOCK_DEVICE'
-  | 'WIPE_DEVICE'
-  | 'REBOOT_DEVICE'
-  | 'LOCATE_DEVICE'
-  | 'RING_DEVICE'
-  | 'INSTALL_APP'
-  | 'UNINSTALL_APP'
-  | 'APPLY_POLICY'
-  | 'REMOVE_POLICY'
-  | 'UPDATE_POLICY'
-  | 'GET_DEVICE_INFO'
-  | 'SET_KIOSK_MODE'
-  | 'EXIT_KIOSK_MODE'
-  | 'SET_WIFI_CONFIG'
-  | 'CLEAR_PASSCODE'
-  | 'ENABLE_LOST_MODE'
-  | 'DISABLE_LOST_MODE'
-  | 'TAKE_SCREENSHOT'
-  | 'GET_APP_LIST'
-  | 'SYNC_SETTINGS'
-  | 'PROVISION_DEVICE';
+// The single command vocabulary lives in @mdm/shared-types, checked against the agent.
+export type { CommandType } from '@mdm/shared-types';
+import type { CommandType } from '@mdm/shared-types';
 
 export interface CommandParameters {
   // Lock/Unlock commands

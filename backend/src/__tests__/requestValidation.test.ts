@@ -94,13 +94,24 @@ describe('command schemas', () => {
     expect(res.status).toBe(200);
   });
 
-  it('accepts a wipe targeting many devices', async () => {
+  it('accepts a lock targeting many devices', async () => {
     const res = await request(appWithBody(createCommandSchema))
       .post('/t')
-      .send({ deviceIds: Array.from({ length: 500 }, (_, i) => `t-${i}`), command: 'WIPE_DEVICE' });
+      .send({ deviceIds: Array.from({ length: 500 }, (_, i) => `t-${i}`), command: 'LOCK_DEVICE' });
 
     expect(res.status).toBe(200);
   });
+
+  it.each(['WIPE_DEVICE', 'INSTALL_APP', 'REBOOT_DEVICE'])(
+    'rejects %s, which the agent does not implement',
+    async (command) => {
+      const res = await request(appWithBody(createCommandSchema))
+        .post('/t')
+        .send({ ...valid, command });
+
+      expect(res.status).toBe(400);
+    }
+  );
 
   it('rejects an unrecognised command rather than queueing it', async () => {
     const res = await request(appWithBody(createCommandSchema))

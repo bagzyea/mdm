@@ -26,7 +26,8 @@
       "@/hooks/*": ["src/hooks/*"],
       "@/services/*": ["src/services/*"],
       "@/types/*": ["src/types/*"],
-      "@/utils/*": ["src/utils/*"]
+      "@/utils/*": ["src/utils/*"],
+      "@mdm/shared-types": ["../integration/shared-types/src/index.ts"]
     }
   },
   "include": ["src"],

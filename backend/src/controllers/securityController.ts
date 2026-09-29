@@ -3,6 +3,8 @@ import { SecurityStatus, ComplianceReport, ComplianceCheck, EncryptionPolicy } f
 import { notificationService } from '../services/notificationService';
 import logger from '../logger';
 import prisma from '../db';
+import { getCommandService } from '../services/commandServiceInstance';
+import { sendCommandError } from '../services/commandService';
 
 
 export const getSecurityStatus = async (req: Request<{ deviceId: string }>, res: Response) => {
@@ -208,32 +210,32 @@ export const enforceEncryptionPolicy = async (req: Request<{ deviceId: string }>
       return;
     }
     
-    // Update security status with encryption policy
+    // Queue the command first: if the agent cannot enforce encryption, nothing is
+    // recorded. This used to write encryptionStatus FULLY_ENCRYPTED before the device had
+    // done anything, and then queue a command the agent rejected — so the dashboard
+    // reported encrypted tablets that were not.
+    const { commands } = await getCommandService().createCommands({
+      deviceIds: [device.id],
+      command: 'ENFORCE_ENCRYPTION',
+      parameters: JSON.parse(JSON.stringify(encryptionPolicy))
+    });
+    const command = commands[0];
+
+    // Record the requested policy only. The encryption status itself is whatever the
+    // device last reported, not what was asked for.
     const securityStatus = await prisma.securityStatus.upsert({
       where: { deviceId: device.id },
       update: {
-        encryptionStatus: encryptionPolicy.enabled ? 'FULLY_ENCRYPTED' : 'NOT_ENCRYPTED',
         encryptionType: encryptionPolicy.encryptionType,
         encryptionStrength: encryptionPolicy.encryptionStrength
       },
       create: {
         deviceId: device.id,
-        encryptionStatus: encryptionPolicy.enabled ? 'FULLY_ENCRYPTED' : 'NOT_ENCRYPTED',
         encryptionType: encryptionPolicy.encryptionType,
         encryptionStrength: encryptionPolicy.encryptionStrength
       }
     });
-    
-    // Send encryption command to device
-    const command = await prisma.remoteCommand.create({
-      data: {
-        deviceId: device.id,
-        command: 'ENFORCE_ENCRYPTION',
-        parameters: JSON.parse(JSON.stringify(encryptionPolicy)),
-        status: 'PENDING'
-      }
-    });
-    
+
     // Log encryption policy enforcement
     await prisma.deviceEvent.create({
       data: {
@@ -244,11 +246,12 @@ export const enforceEncryptionPolicy = async (req: Request<{ deviceId: string }>
     });
     
     res.json({
-      message: 'Encryption policy enforced',
+      message: 'Encryption policy queued',
       securityStatus,
       command
     });
   } catch (error) {
+    if (sendCommandError(res, error)) return;
     logger.error(error, 'Error enforcing encryption policy');
     res.status(500).json({ error: 'Failed to enforce encryption policy' });
   }
@@ -268,20 +271,18 @@ export const detectRootStatus = async (req: Request<{ deviceId: string }>, res: 
     }
     
     // Send root detection command to device
-    const command = await prisma.remoteCommand.create({
-      data: {
-        deviceId: device.id,
-        command: 'DETECT_ROOT_STATUS',
-        parameters: {},
-        status: 'PENDING'
-      }
+    const { commands } = await getCommandService().createCommands({
+      deviceIds: [device.id],
+      command: 'DETECT_ROOT_STATUS'
     });
-    
+    const command = commands[0];
+
     res.json({
       message: 'Root detection command sent',
       command
     });
   } catch (error) {
+    if (sendCommandError(res, error)) return;
     logger.error(error, 'Error detecting root status');
     res.status(500).json({ error: 'Failed to detect root status' });
   }
