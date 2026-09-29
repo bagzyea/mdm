@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.mdm.app.api.ApiClient
+import com.mdm.app.config.AppConfig
 import com.mdm.app.api.MDMApiService
 import com.mdm.app.models.DeviceInfo
 import com.mdm.app.models.EnrollmentRequest
@@ -83,7 +84,7 @@ class MDMService(private val context: Context) {
                 try {
                     if (!webSocketClient.isConnected()) {
                         Log.w(TAG, "WebSocket connection lost, attempting to reconnect...")
-                        val serverUrl = preferenceManager.getServerUrl() ?: "http://10.0.2.2:5001"
+                        val serverUrl = preferenceManager.getServerUrl() ?: AppConfig.Server.BASE_API_URL_EMULATOR
                         val deviceToken = preferenceManager.getDeviceToken()
 
                         if (!deviceToken.isNullOrEmpty()) {
@@ -104,9 +105,9 @@ class MDMService(private val context: Context) {
         val serverUrl = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ||
                            context.packageName.endsWith(".debug")) {
             Log.d(TAG, "Debug build detected, using emulator server URL")
-            "http://10.0.2.2:5001"
+            AppConfig.Server.BASE_API_URL_EMULATOR
         } else {
-            preferenceManager.getServerUrl() ?: "http://10.0.2.2:5001"
+            preferenceManager.getServerUrl() ?: AppConfig.Server.BASE_API_URL_EMULATOR
         }
 
         Log.d(TAG, "initializeWebSocket: serverUrl=$serverUrl, hasToken=${!deviceToken.isNullOrEmpty()}")

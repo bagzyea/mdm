@@ -376,18 +376,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * Enrollment needs a single-use code an administrator generates in the dashboard
+     * (Devices -> Enrollment code). Nothing in the app used to ask for it — it read a
+     * stored code that nothing ever stored — so no tablet could enroll. It is now asked
+     * for here, and discarded after an attempt, since a code works once.
+     */
     private fun enrollDevice() {
-        // Enrollment code should be obtained from the device initialization or MDM server
-        // For now, enrollment happens automatically during device registration
-        val enrollmentCode = preferenceManager.getEnrollmentCode() ?: ""
-        if (enrollmentCode.isEmpty()) {
-            showSnackbar("No enrollment code found", Snackbar.LENGTH_LONG)
-            return
+        val saved = preferenceManager.getEnrollmentCode()
+        if (saved.isNullOrBlank()) {
+            promptForEnrollmentCode()
+        } else {
+            enrollWithCode(saved)
         }
-        
+    }
+
+    private fun promptForEnrollmentCode() {
+        val padding = (20 * resources.displayMetrics.density).toInt()
+        val input = android.widget.EditText(this).apply {
+            hint = "XXXX-XXXX-XXXX"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        val container = android.widget.FrameLayout(this).apply {
+            setPadding(padding, padding / 2, padding, 0)
+            addView(input)
+        }
+
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Enrollment code")
+            .setMessage("Enter the code from the MDM dashboard (Devices \u2192 Enrollment code).")
+            .setView(container)
+            .setPositiveButton("Enroll") { _, _ ->
+                val code = input.text.toString().trim().uppercase()
+                if (code.isEmpty()) {
+                    showSnackbar("An enrollment code is required", Snackbar.LENGTH_LONG)
+                } else {
+                    preferenceManager.setEnrollmentCode(code)
+                    enrollWithCode(code)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun enrollWithCode(enrollmentCode: String) {
         showProgress(true)
         updateStatus("Enrolling device...", StatusType.INFO)
-        
+
         lifecycleScope.launch {
             try {
                 val success = mdmService.enrollDevice(enrollmentCode)
@@ -397,18 +434,20 @@ class MainActivity : AppCompatActivity() {
                     updateUI()
                 } else {
                     updateStatus("Enrollment failed", StatusType.ERROR)
-                    showSnackbar("Enrollment failed. Please check your enrollment code.", Snackbar.LENGTH_LONG)
+                    showSnackbar("Enrollment failed. Check the code, or ask for a new one.", Snackbar.LENGTH_LONG)
                 }
             } catch (e: Exception) {
                 updateStatus("Enrollment error: ${e.message}", StatusType.ERROR)
                 showSnackbar("Enrollment error: ${e.message}", Snackbar.LENGTH_LONG)
                 Log.e(TAG, "Enrollment error", e)
             } finally {
+                // Codes are single-use: never retry a spent or rejected one silently.
+                preferenceManager.setEnrollmentCode("")
                 showProgress(false)
             }
         }
     }
-    
+
     // REMOVED DANGEROUS FUNCTIONS FOR SECURITY:
     // - startMDMServices() - now server-controlled only
     // - stopMDMServices() - now server-controlled only

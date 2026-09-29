@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.mdm.app.api.ApiClient
+import com.mdm.app.config.AppConfig
 import com.mdm.app.utils.PreferenceManager
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -310,7 +311,7 @@ class WebSocketClient private constructor(private val context: Context) {
                 // In debug builds, always use the local development server
                 val serverUrl = if (context.packageName.endsWith(".debug")) {
                     Log.d(TAG, "Debug build: using emulator server URL for reconnection")
-                    "http://10.0.2.2:5001"
+                    AppConfig.Server.BASE_API_URL_EMULATOR
                 } else {
                     PreferenceManager.getInstance(context).getServerUrl()
                 }

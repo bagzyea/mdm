@@ -20,6 +20,9 @@ plugins {
 //     | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
 // ---------------------------------------------------------------------------
 def mdmHost = project.findProperty('mdmHost') ?: 'mdm.uboscare.com'
+// Server for debug builds. Defaults to the emulator's alias for the host machine; for a
+// real tablet on the office network build with -PmdmDevServer=http://10.10.10.241:5001.
+def mdmDevServer = project.findProperty('mdmDevServer') ?: 'http://10.0.2.2:5001'
 def mdmPinPrimary = project.findProperty('mdmPinPrimary') ?: ''
 def mdmPinBackup = project.findProperty('mdmPinBackup') ?: ''
 
@@ -60,6 +63,7 @@ android {
         buildConfigField "int", "VERSION_CODE", "1"
 
         buildConfigField "String", "MDM_HOST", "\"${mdmHost}\""
+        buildConfigField "String", "DEV_SERVER_URL", "\"${mdmDevServer}\""
         buildConfigField "String", "CERT_PIN_PRIMARY", "\"${mdmPinPrimary}\""
         buildConfigField "String", "CERT_PIN_BACKUP", "\"${mdmPinBackup}\""
     }

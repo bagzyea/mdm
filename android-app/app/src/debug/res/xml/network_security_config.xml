@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only (this file overrides src/main/res/xml/network_security_config.xml).
+  Test servers are reached over plain HTTP, and which one is a build option
+  (-PmdmDevServer, e.g. http://10.10.10.241:5001), so cleartext is allowed to any host
+  here. Release builds use the main config: HTTPS only, with certificate pinning.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

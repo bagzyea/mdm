@@ -21,10 +21,12 @@ object AppConfig {
         // Base API URL - HARDCODED, IMMUTABLE
         // DO NOT allow users to change this - security risk
         const val BASE_API_URL = "https://mdm.uboscare.com"  // Production
-        const val BASE_API_URL_FALLBACK = "http://10.0.2.2:5001" // Emulator/Development
+        // Debug builds only. Set at build time with -PmdmDevServer (default: the emulator's
+        // alias for the host, http://10.0.2.2:5001). See docs/android-agent.md.
+        val BASE_API_URL_FALLBACK: String = BuildConfig.DEV_SERVER_URL
 
         // For development/emulator testing only
-        const val BASE_API_URL_EMULATOR = "http://10.0.2.2:5001"
+        val BASE_API_URL_EMULATOR: String = BuildConfig.DEV_SERVER_URL
 
         // Certificate pinning enabled - prevents MITM attacks
         const val CERTIFICATE_PINNING_ENABLED = true
