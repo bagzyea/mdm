@@ -31,6 +31,110 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TYPE "PolicyType" ADD VALUE IF NOT EXISTS 'HARDWARE';
 ALTER TYPE "PolicyType" ADD VALUE IF NOT EXISTS 'SYSTEM';
 
+-- Security and certificate tables ------------------------------------------------------
+-- A fresh database gets these from the earlier migrations. The long-running database
+-- this was written against never had them (its history was repaired by hand), so every
+-- certificate, security-status and compliance endpoint failed there. Created only if
+-- missing, so this is a no-op wherever they already exist.
+DO $$ BEGIN
+  CREATE TYPE "CertificateType" AS ENUM ('SSL_TLS', 'CLIENT_AUTH', 'CODE_SIGNING', 'ROOT_CA', 'INTERMEDIATE_CA', 'DEVICE_CA');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TYPE "CertificateStatus" AS ENUM ('ACTIVE', 'EXPIRED', 'REVOKED', 'PENDING', 'FAILED');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TYPE "EncryptionStatus" AS ENUM ('UNKNOWN', 'NOT_ENCRYPTED', 'PARTIALLY_ENCRYPTED', 'FULLY_ENCRYPTED', 'ENCRYPTION_FAILED');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TYPE "ComplianceStatus" AS ENUM ('UNKNOWN', 'COMPLIANT', 'NON_COMPLIANT', 'PARTIALLY_COMPLIANT', 'PENDING');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TYPE "ComplianceReportType" AS ENUM ('SECURITY', 'ENCRYPTION', 'CERTIFICATE', 'ROOT_DETECTION', 'PATCH_LEVEL', 'OVERALL');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "Certificate" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "type" "CertificateType" NOT NULL,
+    "certificateData" TEXT NOT NULL,
+    "privateKey" TEXT,
+    "issuer" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "validFrom" TIMESTAMP(3) NOT NULL,
+    "validTo" TIMESTAMP(3) NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isRevoked" BOOLEAN NOT NULL DEFAULT false,
+    "revocationDate" TIMESTAMP(3),
+    "revocationReason" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdBy" TEXT,
+    CONSTRAINT "Certificate_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "DeviceCertificate" (
+    "id" TEXT NOT NULL,
+    "deviceId" TEXT NOT NULL,
+    "certificateId" TEXT NOT NULL,
+    "status" "CertificateStatus" NOT NULL DEFAULT 'ACTIVE',
+    "installedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "lastVerified" TIMESTAMP(3),
+    CONSTRAINT "DeviceCertificate_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "SecurityStatus" (
+    "id" TEXT NOT NULL,
+    "deviceId" TEXT NOT NULL,
+    "encryptionStatus" "EncryptionStatus" NOT NULL DEFAULT 'UNKNOWN',
+    "encryptionType" TEXT,
+    "encryptionStrength" INTEGER,
+    "rootStatus" BOOLEAN NOT NULL DEFAULT false,
+    "jailbreakDetected" BOOLEAN NOT NULL DEFAULT false,
+    "securityPatchLevel" TEXT,
+    "lastSecurityScan" TIMESTAMP(3),
+    "complianceStatus" "ComplianceStatus" NOT NULL DEFAULT 'UNKNOWN',
+    "complianceScore" INTEGER,
+    "lastComplianceCheck" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "SecurityStatus_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ComplianceReport" (
+    "id" TEXT NOT NULL,
+    "deviceId" TEXT NOT NULL,
+    "reportType" "ComplianceReportType" NOT NULL,
+    "status" "ComplianceStatus" NOT NULL,
+    "score" INTEGER NOT NULL,
+    "details" JSONB NOT NULL,
+    "violations" JSONB,
+    "recommendations" JSONB,
+    "generatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3),
+    CONSTRAINT "ComplianceReport_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "Certificate_isActive_idx" ON "Certificate"("isActive");
+CREATE INDEX IF NOT EXISTS "Certificate_validTo_idx" ON "Certificate"("validTo");
+CREATE INDEX IF NOT EXISTS "DeviceCertificate_expiresAt_idx" ON "DeviceCertificate"("expiresAt");
+CREATE UNIQUE INDEX IF NOT EXISTS "DeviceCertificate_deviceId_certificateId_key" ON "DeviceCertificate"("deviceId", "certificateId");
+CREATE UNIQUE INDEX IF NOT EXISTS "SecurityStatus_deviceId_key" ON "SecurityStatus"("deviceId");
+CREATE INDEX IF NOT EXISTS "ComplianceReport_deviceId_idx" ON "ComplianceReport"("deviceId");
+CREATE INDEX IF NOT EXISTS "ComplianceReport_generatedAt_idx" ON "ComplianceReport"("generatedAt");
+CREATE INDEX IF NOT EXISTS "APKRegistry_packageName_idx" ON "APKRegistry"("packageName");
+
+DO $$ BEGIN
+  ALTER TABLE "DeviceCertificate" ADD CONSTRAINT "DeviceCertificate_deviceId_fkey" FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "DeviceCertificate" ADD CONSTRAINT "DeviceCertificate_certificateId_fkey" FOREIGN KEY ("certificateId") REFERENCES "Certificate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "SecurityStatus" ADD CONSTRAINT "SecurityStatus_deviceId_fkey" FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Status columns: TEXT -> enum, converted in place ------------------------------------
 ALTER TABLE "DeviceTransfer" ALTER COLUMN "status" DROP DEFAULT;
 ALTER TABLE "DeviceTransfer"
