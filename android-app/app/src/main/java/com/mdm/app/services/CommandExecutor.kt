@@ -5,6 +5,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.util.Log
 import com.mdm.app.admin.MDMDeviceAdminReceiver
+import com.mdm.app.api.ApiClient
+import com.mdm.app.models.CommandResult
 import com.mdm.app.policy.DevicePrivilege
 import com.mdm.app.policy.PolicyEngine
 import com.mdm.app.policy.PrivilegeLevel
@@ -248,9 +250,11 @@ class CommandExecutor(
         )
     }
 
-    private fun sendResult(commandId: String, success: Boolean, data: Any?, error: String?) {
+    private suspend fun sendResult(commandId: String, success: Boolean, data: Any?, error: String?) {
         if (!mdmService.isWebSocketConnected()) {
-            Log.w(TAG, "Not connected; command result for $commandId will be lost")
+            // Commands collected by the HTTP poll run exactly when there is no socket, so
+            // their results used to be dropped here. Report them over HTTP instead.
+            sendResultOverHttp(commandId, success, data, error)
             return
         }
 
@@ -265,6 +269,34 @@ class CommandExecutor(
                 "timestamp" to System.currentTimeMillis()
             )
         )
+    }
+
+    private suspend fun sendResultOverHttp(commandId: String, success: Boolean, data: Any?, error: String?) {
+        val result: Map<String, Any>? = when (data) {
+            null -> null
+            is Map<*, *> -> data.entries
+                .filter { it.key is String && it.value != null }
+                .associate { it.key as String to it.value!! }
+            else -> mapOf("value" to data)
+        }
+
+        try {
+            val response = ApiClient.getInstance(context).mdmApiService.sendCommandResult(
+                commandId,
+                CommandResult(
+                    commandId = commandId,
+                    deviceId = preferenceManager.getDeviceId(),
+                    status = if (success) "SUCCESS" else "ERROR",
+                    result = result,
+                    error = error
+                )
+            )
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Server refused result for $commandId: HTTP ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not report result for $commandId", e)
+        }
     }
 
     /** The result of executing one command. */

@@ -15,10 +15,16 @@
 
 import type { Express } from 'express';
 
-// The middleware factories in src/middleware/auth.ts that constitute an authorization
-// decision. Both return named functions specifically so they can be recognised here.
-// `authenticateToken` is authentication only and does not count as authorization.
-const AUTHORIZATION_MIDDLEWARE = ['requirePermissionMiddleware', 'requireRoleMiddleware'];
+// The middleware factories that constitute an authorization decision. All return named
+// functions specifically so they can be recognised here. `authenticateToken` is
+// authentication only and does not count as authorization. `requireDeviceMiddleware`
+// (src/middleware/deviceAuth.ts) authorizes an agent to act as exactly the device in its
+// token, and only while that device is not revoked.
+const AUTHORIZATION_MIDDLEWARE = [
+  'requirePermissionMiddleware',
+  'requireRoleMiddleware',
+  'requireDeviceMiddleware',
+];
 const AUTHENTICATION_MIDDLEWARE = 'authenticateToken';
 
 /**
@@ -202,8 +208,9 @@ describe('Route authorization (F-01 regression)', () => {
   it('applies authentication at every router mount except /api/auth', () => {
     // Authentication is mount-level, so it does not appear in a route's own handler
     // list. This asserts it directly on the app stack: each mounted router must be
-    // immediately preceded by authenticateToken. /api/auth is exempt because it
-    // contains the login surface and authenticates internally, per route.
+    // immediately preceded by authenticateToken, or authenticate every route with the
+    // device guard. /api/auth is exempt because it contains the login surface and
+    // authenticates internally, per route.
     const app = require('../server').default as Express;
     const stack = (((app as any).router ?? (app as any)._router) as { stack: any[] }).stack;
 
@@ -222,7 +229,18 @@ describe('Route authorization (F-01 regression)', () => {
 
       if (!mount || mount === '/api/auth') return;
 
-      if (stack[index - 1]?.name !== AUTHENTICATION_MIDDLEWARE) {
+      if (stack[index - 1]?.name === AUTHENTICATION_MIDDLEWARE) return;
+
+      // The device-agent routers authenticate per route instead: requireDevice claims
+      // only device-token requests and passes the rest to the operator router behind
+      // it. Accept such a router only if every one of its routes carries that guard.
+      const routeLayers = layer.handle.stack.filter((l: any) => l.route);
+      const everyRouteIsDeviceGuarded =
+        routeLayers.length > 0 &&
+        routeLayers.every((l: any) =>
+          l.route.stack.some((s: any) => s.name === 'requireDeviceMiddleware')
+        );
+      if (!everyRouteIsDeviceGuarded) {
         unauthenticatedMounts.push(mount);
       }
     });

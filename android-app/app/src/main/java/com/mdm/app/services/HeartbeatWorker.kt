@@ -114,6 +114,11 @@ class HeartbeatWorker(
                     if (response.isSuccessful) {
                         success = true
                         Log.i(TAG, "Heartbeat sent via API successfully")
+                        // No socket means nothing will push these; collect them now rather
+                        // than at the next four-hourly poll.
+                        if ((response.body()?.pendingCommands ?: 0) > 0) {
+                            CommandPollingWorker.enqueueImmediatePoll(applicationContext)
+                        }
                     } else {
                         Log.w(TAG, "API heartbeat failed with code: ${response.code()}")
                     }

@@ -109,14 +109,16 @@ class CommandPollingWorker(
                             PreferenceManager.getInstance(applicationContext)
                         )
 
-                    for (cmdObject in commands) {
+                    for (command in commands) {
                         try {
-                            val json = JSONObject(cmdObject.toString())
-
+                            // Built from the parsed fields. This used to be
+                            // JSONObject(command.toString()), but `command` is a Kotlin data
+                            // class whose toString() is "RemoteCommand(id=...)", not JSON — so
+                            // every polled command threw here and was skipped.
                             val reconstructedCmd = JSONObject().apply {
-                                put("commandType", json.optString("command", ""))
-                                put("commandId", json.optString("id", ""))
-                                put("payload", json.optJSONObject("parameters"))
+                                put("commandType", command.command)
+                                put("commandId", command.id)
+                                put("payload", JSONObject(command.parameters ?: emptyMap<String, Any>()))
                             }
 
                             Log.d(TAG, "Executing polled command: ${reconstructedCmd.optString("commandType")}")

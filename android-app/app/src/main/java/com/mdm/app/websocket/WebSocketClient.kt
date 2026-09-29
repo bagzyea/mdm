@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import com.mdm.app.api.ApiClient
 import com.mdm.app.utils.PreferenceManager
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -60,6 +61,10 @@ class WebSocketClient private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    /** Set when the last handshake was refused for its token. */
+    @Volatile
+    private var tokenRejected = false
+
     fun connect(serverUrl: String, deviceToken: String) {
         if (isConnecting || isConnected()) {
             Log.d(TAG, "Already connecting or connected")
@@ -80,7 +85,11 @@ class WebSocketClient private constructor(private val context: Context) {
 
             // Configure Socket.IO client options
             val opts = IO.Options()
-            opts.reconnection = true
+            // Reconnection is ours (scheduleReconnection), not the library's: the library
+            // replays the handshake with the token captured here, which is refused once it
+            // expires. Ours reads the current token, refreshing it first if needed. With
+            // both enabled the two also raced, opening duplicate sockets.
+            opts.reconnection = false
             opts.reconnectionDelay = RECONNECT_DELAY
             opts.reconnectionAttempts = MAX_RECONNECT_ATTEMPTS
             opts.transports = arrayOf("websocket", "polling")
@@ -156,6 +165,12 @@ class WebSocketClient private constructor(private val context: Context) {
     private fun onConnectError(args: Array<*>) {
         val error = args.getOrNull(0)
         Log.e(TAG, "Socket.IO connection error: $error")
+        // The server refuses an expired access token at the handshake. Renew it before
+        // the next attempt, or every retry fails the same way.
+        val message = (error as? Exception)?.message ?: error?.toString().orEmpty()
+        if (message.contains("AUTHENTICATION_FAILED")) {
+            tokenRejected = true
+        }
         isConnecting = false
         _connectionStatus.postValue(false)
         _connectionError.postValue("Connection error: $error")
@@ -283,6 +298,13 @@ class WebSocketClient private constructor(private val context: Context) {
             delay(delay)
 
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                if (tokenRejected) {
+                    tokenRejected = false
+                    val stale = PreferenceManager.getInstance(context).getDeviceToken()
+                    val outcome = ApiClient.getInstance(context).tokenRefresher.refresh(stale)
+                    Log.i(TAG, "Socket token refresh: $outcome")
+                }
+
                 val deviceToken = PreferenceManager.getInstance(context).getDeviceToken()
 
                 // In debug builds, always use the local development server

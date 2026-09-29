@@ -154,6 +154,15 @@ export const config = {
    */
   deviceRefreshTokenTtlDays: Number(process.env.DEVICE_REFRESH_TOKEN_TTL_DAYS ?? 90),
 
+  /**
+   * How long a queued command waits for its device before it is failed.
+   *
+   * This was five minutes (finding F-25), which failed every command sent to a tablet
+   * that was out of coverage — the normal state for a census enumerator — long before
+   * the agent's periodic poll could collect it. Default: seven days.
+   */
+  commandTtlSeconds: Number(process.env.COMMAND_TTL_SECONDS ?? 7 * 24 * 60 * 60),
+
   /** 32-byte AES-256-GCM key for data at rest. */
   encryptionKey: resolveEncryptionKey(),
 } as const;

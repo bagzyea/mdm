@@ -122,6 +122,7 @@ import provisioningRoutes from './routes/provisioningRoutes';
 import securityRoutes from './routes/securityRoutes';
 import deviceLifecycleRoutes from './routes/deviceLifecycleRoutes';
 import apkRegistryRoutes from './routes/apkRegistryRoutes';
+import { deviceAgentRoutes, deviceCommandResultRoutes } from './routes/deviceAgentRoutes';
 
 // Import authentication middleware
 import { authenticateToken } from './middleware/auth';
@@ -189,6 +190,11 @@ app.post(
 //
 // src/__tests__/routeAuthorization.test.ts walks the mounted router stack and fails
 // if any route is missing an authorization guard, so this cannot silently regress.
+// Device-token routes go first. They claim only requests carrying a device token and
+// pass every other request on to the operator router mounted on the same prefix.
+app.use('/api/devices', deviceAgentRoutes);
+app.use('/api/commands', deviceCommandResultRoutes);
+
 app.use('/api/devices', authenticateToken, deviceRoutes);
 app.use('/api/policies', authenticateToken, policyRoutes);
 app.use('/api/commands', authenticateToken, commandRoutes);

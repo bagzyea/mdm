@@ -1,119 +1,120 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { CommandType, CreateCommandRequest, CommandResult } from '../types/commands';
 import prisma from '../db';
+import config from '../config/env';
+import logger from '../logger';
+import { deviceRoom } from '../socket/registry';
 
 
 export class CommandService {
   constructor(private io: SocketIOServer) { }
 
-  // Send real-time command notification to devices
+  /**
+   * Push a command to a connected device.
+   *
+   * Emits to the device's own room. This used to call `io.fetchSockets()` and search
+   * every connected socket in the process for each command — O(fleet) per command, and
+   * the queue processor did it for up to 100 commands every 30 seconds.
+   *
+   * @returns false when the device has no open socket; the command stays PENDING for the
+   *          agent's next HTTP poll.
+   */
   async notifyDeviceOfCommand(deviceId: string, commandId: string, command: CommandType, parameters?: unknown) {
     try {
-      console.log(`[COMMAND] notifyDeviceOfCommand called for deviceId: ${deviceId}, commandId: ${commandId}, command: ${command}`);
-
-      // Find device's socket connection
-      const sockets = await this.io.fetchSockets();
-      console.log(`[COMMAND] Total connected sockets: ${sockets.length}`);
-
-      // Log all device sockets for debugging
-      const deviceSockets = sockets.filter(s => s.data.deviceId);
-      console.log(`[COMMAND] Device sockets found: ${deviceSockets.map(s => s.data.deviceId).join(', ')}`);
-
-      const deviceSocket = sockets.find(socket => socket.data.deviceId === deviceId);
-
-      if (deviceSocket) {
-        console.log(`[COMMAND] ✓ Found socket for device ${deviceId}, emitting executeCommand`);
-
-        // Send command directly to connected device.
-        // Shape: { commandId, commandType, payload } — matches Android handleServerCommand()
-        deviceSocket.emit('executeCommand', {
-          commandId,
-          commandType: command,  // normalized field name used on Android
-          payload: parameters ?? {},
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`[COMMAND] ✓ Emitted executeCommand event for deviceId: ${deviceId}`);
-
-        // Update command status to SENT
-        await prisma.remoteCommand.update({
-          where: { id: commandId },
-          data: { status: 'SENT' }
-        });
-
-        return true;
-      } else {
-        console.log(`[COMMAND] ✗ Device ${deviceId} not found in connected sockets`);
-        console.log(`[COMMAND] Searching for device by name in database...`);
-
-        // Try to find device in database to get more info
-        const device = await prisma.device.findUnique({
-          where: { deviceId },
-          select: { id: true, deviceId: true, status: true }
-        });
-
-        if (device) {
-          console.log(`[COMMAND] Device found in DB - ID: ${device.id}, deviceId: ${device.deviceId}, status: ${device.status}`);
-        } else {
-          console.log(`[COMMAND] Device not found in database either. Checking if ID is a cuid...`);
-          const deviceByDbId = await prisma.device.findUnique({
-            where: { id: deviceId },
-            select: { id: true, deviceId: true, status: true }
-          });
-          if (deviceByDbId) {
-            console.log(`[COMMAND] Found by database ID - deviceId: ${deviceByDbId.deviceId}, status: ${deviceByDbId.status}`);
-          }
-        }
-
-        // In a real implementation, you would use push notifications here
+      const room = deviceRoom(deviceId);
+      const sockets = await this.io.in(room).fetchSockets();
+      if (sockets.length === 0) {
+        logger.debug({ deviceId, commandId }, 'Device not connected; command left for polling');
         return false;
       }
+
+      // Shape: { commandId, commandType, payload } — matches Android CommandExecutor.handle()
+      this.io.to(room).emit('executeCommand', {
+        commandId,
+        commandType: command,
+        payload: parameters ?? {},
+        timestamp: new Date().toISOString()
+      });
+
+      await prisma.remoteCommand.update({
+        where: { id: commandId },
+        data: { status: 'SENT' }
+      });
+
+      logger.info({ deviceId, commandId, command }, 'Command pushed to device');
+      return true;
     } catch (error) {
-      console.error('[COMMAND] Error notifying device of command:', error);
+      logger.error(error, 'Error notifying device of command');
       return false;
     }
   }
 
-  // Process command queue for offline devices
+  /**
+   * Hand a polling device its queued commands, marking them SENT.
+   *
+   * The HTTP counterpart of `notifyDeviceOfCommand`, used by the agent's periodic poll
+   * and FCM wake when it has no socket — which, for a tablet in the field, is most of
+   * the time.
+   */
+  async takePendingCommands(deviceId: string, limit = 50) {
+    const commands = await prisma.remoteCommand.findMany({
+      where: { device: { deviceId }, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      take: limit
+    });
+
+    if (commands.length > 0) {
+      await prisma.remoteCommand.updateMany({
+        where: { id: { in: commands.map((c) => c.id) }, status: 'PENDING' },
+        data: { status: 'SENT' }
+      });
+    }
+
+    return commands;
+  }
+
+  /**
+   * Retry queued commands for connected devices, and fail those past their TTL.
+   *
+   * Only devices currently ACTIVE are retried. Previously the oldest 100 PENDING
+   * commands were retried regardless, so once commands for offline tablets filled that
+   * window, commands for connected tablets behind them were never retried at all.
+   */
   async processCommandQueue() {
     try {
+      const expiredBefore = new Date(Date.now() - config.commandTtlSeconds * 1000);
+      const expired = await prisma.remoteCommand.updateMany({
+        where: { status: 'PENDING', createdAt: { lt: expiredBefore } },
+        data: {
+          status: 'FAILED',
+          result: {
+            success: false,
+            message: 'Device did not collect the command before it expired',
+            expiredAt: new Date().toISOString()
+          }
+        }
+      });
+      if (expired.count > 0) {
+        logger.info({ count: expired.count }, 'Expired undelivered commands');
+      }
+
       const pendingCommands = await prisma.remoteCommand.findMany({
-        where: { status: 'PENDING' },
-        include: { device: true },
+        where: { status: 'PENDING', device: { status: 'ACTIVE' } },
+        include: { device: { select: { deviceId: true } } },
         orderBy: { createdAt: 'asc' },
         take: 100 // Process in batches
       });
 
       for (const command of pendingCommands) {
-        const success = await this.notifyDeviceOfCommand(
+        await this.notifyDeviceOfCommand(
           command.device.deviceId,
           command.id,
           command.command as CommandType,
           command.parameters
         );
-
-        if (!success) {
-          // Mark as failed if device not reachable after timeout
-          const commandAge = new Date().getTime() - command.createdAt.getTime();
-          const timeoutMs = 5 * 60 * 1000; // 5 minutes
-
-          if (commandAge > timeoutMs) {
-            await prisma.remoteCommand.update({
-              where: { id: command.id },
-              data: {
-                status: 'FAILED',
-                result: {
-                  success: false,
-                  message: 'Device unreachable - command timeout',
-                  timestamp: new Date()
-                } as any
-              }
-            });
-          }
-        }
       }
     } catch (error) {
-      console.error('Error processing command queue:', error);
+      logger.error(error, 'Error processing command queue');
     }
   }
 
@@ -161,7 +162,7 @@ export class CommandService {
 
       return true;
     } catch (error) {
-      console.error('Error handling command response:', error);
+      logger.warn({ deviceId, commandId, err: error }, 'Command response rejected');
       return false;
     }
   }

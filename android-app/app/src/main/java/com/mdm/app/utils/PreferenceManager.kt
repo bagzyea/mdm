@@ -5,12 +5,13 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import com.mdm.app.api.TokenStore
 
 /**
  * Secure preference manager using AES-256-GCM encrypted shared preferences
  * All sensitive data (tokens, device IDs) are encrypted at rest
  */
-class PreferenceManager private constructor(private val context: Context) {
+class PreferenceManager private constructor(private val context: Context) : TokenStore {
     
     companion object {
         @Volatile
@@ -21,6 +22,7 @@ class PreferenceManager private constructor(private val context: Context) {
         // Preference keys
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEVICE_TOKEN = "device_token"
+        private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_IS_ENROLLED = "is_enrolled"
         private const val KEY_LAST_HEARTBEAT = "last_heartbeat"
@@ -62,9 +64,13 @@ class PreferenceManager private constructor(private val context: Context) {
     fun clearDeviceId() = sharedPrefs.edit().remove(KEY_DEVICE_ID).apply()
     
     // Device Token
-    fun getDeviceToken(): String? = sharedPrefs.getString(KEY_DEVICE_TOKEN, null)
-    fun setDeviceToken(token: String) = sharedPrefs.edit().putString(KEY_DEVICE_TOKEN, token).apply()
+    override fun getDeviceToken(): String? = sharedPrefs.getString(KEY_DEVICE_TOKEN, null)
+    override fun setDeviceToken(token: String) = sharedPrefs.edit().putString(KEY_DEVICE_TOKEN, token).apply()
     fun clearDeviceToken() = sharedPrefs.edit().remove(KEY_DEVICE_TOKEN).apply()
+
+    // Refresh token — renews the short-lived device token (see api/TokenRefresher.kt)
+    override fun getRefreshToken(): String? = sharedPrefs.getString(KEY_REFRESH_TOKEN, null)
+    fun setRefreshToken(token: String) = sharedPrefs.edit().putString(KEY_REFRESH_TOKEN, token).apply()
     
     // Server URL
     fun getServerUrl(): String? = sharedPrefs.getString(KEY_SERVER_URL, null)
@@ -147,6 +153,7 @@ class PreferenceManager private constructor(private val context: Context) {
     fun clearAuthData() {
         sharedPrefs.edit()
             .remove(KEY_DEVICE_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_IS_ENROLLED)
             .apply()
     }

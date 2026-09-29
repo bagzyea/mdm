@@ -209,6 +209,7 @@ class MDMService(private val context: Context) {
                 val body: EnrollmentResponse? = response.body()
                 if (body?.success == true) {
                     body.deviceToken?.let { preferenceManager.setDeviceToken(it) }
+                    body.refreshToken?.let { preferenceManager.setRefreshToken(it) }
                     body.deviceId?.let { preferenceManager.setDeviceId(it) }
                     _enrollmentStatus.postValue(true)
                     initializeWebSocket()
