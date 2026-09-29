@@ -77,3 +77,5 @@ COMPLETE_SETUP_GUIDE.md
 DOCKER_README.md
 DOCKER_SETUP_GUIDE.md
 DOCKER_TESTING_GUIDE.md
+# Deployment secrets
+ops/backend.env

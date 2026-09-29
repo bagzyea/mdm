@@ -2,30 +2,17 @@ version: '3.8'
 
 services:
   mdm-backend:
-    build: ./backend
+    # Built from the repo root: the backend needs the @mdm/shared-types workspace.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "5001:5001"
-    environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgresql://mdm_user:mdm_password@db:5432/mdm_dev
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production}
-      - JWT_EXPIRES_IN=15m
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - PORT=5001
-      - CORS_ORIGIN=http://localhost:3000,http://localhost:5000,http://localhost:8080
-      - BCRYPT_ROUNDS=12
-      - RATE_LIMIT_WINDOW_MS=900000
-      - RATE_LIMIT_MAX_REQUESTS=100
-      - LOG_LEVEL=info
-      - ADMIN_EMAIL=admin@mdm.local
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-dev-admin-password-change-in-production}
-      - ADMIN_FIRST_NAME=Admin
-      - ADMIN_LAST_NAME=User
+    env_file:
+      - ./ops/backend.env
     volumes:
-      - ./backend:/app
-      - /app/node_modules
+      - ./backend:/repo/backend
+      - /repo/backend/node_modules
     depends_on:
       db:
         condition: service_healthy
