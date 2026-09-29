@@ -22,7 +22,7 @@ import {
   createRoleBasedRateLimit
 } from '../middleware/auth';
 import { validate, validateParams } from '../middleware/validation';
-import { loginSchema, registerSchema, refreshTokenSchema, userIdSchema } from '../schemas/authSchemas';
+import { loginSchema, registerSchema, refreshTokenSchema, userIdSchema, updateUserSchema } from '../schemas/authSchemas';
 
 const router = Router();
 
@@ -74,6 +74,7 @@ router.get('/users/:id',
 
 router.put('/users/:id', 
   validateParams(userIdSchema),
+  validate(updateUserSchema),
   requireRole('SUPER_ADMIN', 'ADMIN'),
   requirePermission('users', 'update'),
   auditLog('UPDATE_USER', 'users'),

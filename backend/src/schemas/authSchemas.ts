@@ -30,11 +30,14 @@ export const loginSchema = Joi.object({
 });
 
 export const registerSchema = Joi.object({
+  // Dots, hyphens and underscores are allowed because an MDM username is matched to the
+  // person's Active Directory sAMAccountName (e.g. allan.agaba) for domain sign-in.
   username: Joi.string()
-    .alphanum()
+    .pattern(/^[A-Za-z0-9._-]+$/)
     .min(3)
     .max(50)
-    .required(),
+    .required()
+    .messages({ 'string.pattern.base': 'Username may contain letters, numbers, dots, hyphens and underscores' }),
   
   email: Joi.string()
     .email()
@@ -89,3 +92,18 @@ export const userIdSchema = Joi.object({
       'any.required': 'User ID is required'
     })
 });
+
+/**
+ * Body of PUT /api/auth/users/:id. Only these fields are editable; anything else —
+ * password, id, tokens — is refused with a 400, never written to the database.
+ */
+export const updateUserSchema = Joi.object({
+  email: Joi.string().email().max(100),
+  firstName: Joi.string().min(1).max(50),
+  lastName: Joi.string().min(1).max(50),
+  role: Joi.string().valid('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'),
+  isActive: Joi.boolean()
+})
+  .min(1)
+  .unknown(false);
+

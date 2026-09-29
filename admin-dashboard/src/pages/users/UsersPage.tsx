@@ -118,7 +118,7 @@ const UsersPage: React.FC = () => {
       console.log('✅ User created successfully');
     } catch (err: any) {
       console.error('❌ Error creating user:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to create user');
+      setError(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create user');
     }
   };
   const handleUpdateUser = async () => {
@@ -135,16 +135,17 @@ const UsersPage: React.FC = () => {
       handleCloseDialog();
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to update user');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to update user');
     }
   };
   const handleToggleActive = async (userId: string, isActive: boolean) => {
     try {
-      await apiService.put(`/auth/users/${userId}/status`, { isActive: !isActive });
+      // There is no /status route; this 404'd, so accounts could not be deactivated.
+      await apiService.put(`/auth/users/${userId}`, { isActive: !isActive });
       await fetchUsers();
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to update user status');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to update user status');
     }
   };
   const handleDeleteUser = async (userId: string) => {
@@ -154,7 +155,7 @@ const UsersPage: React.FC = () => {
       await fetchUsers();
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to delete user');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to delete user');
     }
   };
   const handleOpenDialog = (user?: User) => {
@@ -361,6 +362,7 @@ const UsersPage: React.FC = () => {
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                 disabled={!!editingUser}
+                helperText="Use their UBOS domain username (e.g. allan.agaba) so they can sign in with AD"
               />
             </Grid>
             <Grid item xs={12} sm={6}>

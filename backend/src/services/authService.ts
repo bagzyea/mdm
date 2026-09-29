@@ -13,9 +13,17 @@ import config from '../config/env';
 import { redactSensitive } from '../utils/redact';
 import { definedOnly } from '../utils/prisma';
 import prisma from '../db';
+import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { authenticateWithDirectory, DirectoryIdentity } from './directoryService';
 
+
+export class UserManagementError extends Error {
+  constructor(message: string, readonly statusCode: number) {
+    super(message);
+    this.name = 'UserManagementError';
+  }
+}
 
 export class AuthService {
   private readonly JWT_SECRET = config.jwtSecret;
@@ -334,29 +342,87 @@ export class AuthService {
   }
 
   // Update user
-  async updateUser(userId: string, updates: Partial<User>, updatedBy: string): Promise<Omit<User, 'password'>> {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: updates
-    });
+  /**
+   * Who may change whom.
+   *
+   * updateUser used to pass the request body straight to the database, so an ADMIN could
+   * set any column — including making themselves or anyone else SUPER_ADMIN, or writing
+   * an unhashed password — and registration let an ADMIN create a SUPER_ADMIN outright.
+   * Only a SUPER_ADMIN may grant, change or remove SUPER_ADMIN; nobody may demote or
+   * deactivate themselves; and the last active SUPER_ADMIN cannot be removed.
+   */
+  async assertCanManage(
+    actor: { userId: string; role: string },
+    target: { id: string; role: string; isActive: boolean } | null,
+    change: { role?: string; isActive?: boolean }
+  ): Promise<void> {
+    const touchesSuperAdmin = target?.role === 'SUPER_ADMIN' || change.role === 'SUPER_ADMIN';
+    if (touchesSuperAdmin && actor.role !== 'SUPER_ADMIN') {
+      throw new UserManagementError('Only a super admin can grant or change super admin access', 403);
+    }
+    if (!target) return;
 
-    // Log user update
-    await this.logUserAction(updatedBy, 'UPDATE_USER', 'users', userId, updates);
+    const demoting = change.role !== undefined && change.role !== target.role;
+    const deactivating = change.isActive === false && target.isActive;
+    if (target.id === actor.userId && (demoting || deactivating)) {
+      throw new UserManagementError('You cannot change your own role or deactivate yourself', 409);
+    }
+    if (target.role === 'SUPER_ADMIN' && target.isActive && (demoting || deactivating)) {
+      const others = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', isActive: true, id: { not: target.id } }
+      });
+      if (others === 0) {
+        throw new UserManagementError('This is the last active super admin', 409);
+      }
+    }
+  }
+
+  async updateUser(
+    userId: string,
+    updates: { email?: string; firstName?: string; lastName?: string; role?: UserRole; isActive?: boolean },
+    actor: { userId: string; role: string }
+  ): Promise<Omit<User, 'password'>> {
+    const target = await prisma.user.findUnique({ where: { id: userId } });
+    if (!target) throw new UserManagementError('User not found', 404);
+
+    await this.assertCanManage(actor, target, updates);
+
+    // Only these fields are editable here; passwords go through changePassword or
+    // ops/set-password.sh, which hash them.
+    const data: Prisma.UserUpdateInput = {};
+    if (updates.email !== undefined) data.email = updates.email;
+    if (updates.firstName !== undefined) data.firstName = updates.firstName;
+    if (updates.lastName !== undefined) data.lastName = updates.lastName;
+    if (updates.role !== undefined) data.role = updates.role;
+    if (updates.isActive !== undefined) data.isActive = updates.isActive;
+
+    const user = await prisma.user.update({ where: { id: userId }, data });
+
+    // A deactivated account is signed out now, not when its tokens lapse.
+    if (updates.isActive === false) {
+      await prisma.refreshToken.updateMany({ where: { userId, isRevoked: false }, data: { isRevoked: true } });
+    }
+
+    await this.logUserAction(actor.userId, 'UPDATE_USER', 'users', userId, data);
 
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
 
-  // Delete user (deactivate)
-  async deleteUser(userId: string, deletedBy: string): Promise<void> {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { isActive: false }
-    });
 
-    // Log user deletion
-    await this.logUserAction(deletedBy, 'DELETE_USER', 'users', userId, {});
+  // Delete user (deactivate)
+  /** "Delete" deactivates, so the audit trail keeps its references. */
+  async deleteUser(userId: string, actor: { userId: string; role: string }): Promise<void> {
+    const target = await prisma.user.findUnique({ where: { id: userId } });
+    if (!target) throw new UserManagementError('User not found', 404);
+    await this.assertCanManage(actor, target, { isActive: false });
+
+    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+    await prisma.refreshToken.updateMany({ where: { userId, isRevoked: false }, data: { isRevoked: true } });
+
+    await this.logUserAction(actor.userId, 'DELETE_USER', 'users', userId, {});
   }
+
 
   // Change password
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {

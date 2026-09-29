@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { AuthService } from '../services/authService';
+import { AuthService, UserManagementError } from '../services/authService';
+import logger from '../logger';
 import prisma from '../db';
 import { 
   CreateUserRequest, 
@@ -18,6 +19,7 @@ export const register = async (req: Request, res: Response) => {
     const userData: CreateUserRequest = req.body;
     const createdBy = req.user?.userId;
 
+    if (req.user) await authService.assertCanManage(req.user, null, { role: userData.role });
     const user = await authService.createUser(userData, createdBy);
     
     res.status(201).json({
@@ -25,7 +27,11 @@ export const register = async (req: Request, res: Response) => {
       user
     });
   } catch (error) {
-    console.error('User registration error:', error);
+    if (error instanceof UserManagementError) {
+      res.status(error.statusCode).json({ error: error.message, code: 'USER_CREATE_REFUSED' });
+      return;
+    }
+    logger.error(error, 'User registration error');
 
     if (error instanceof Error) {
       // A duplicate username or email is a conflict, not a malformed request. Every
@@ -201,7 +207,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     const updatedUser = await authService.updateUser(
       req.user.userId,
       { firstName, lastName, email },
-      req.user.userId
+      req.user
     );
 
     res.json({
@@ -348,56 +354,38 @@ export const getUserById = async (req: Request<{ id: string }>, res: Response) =
 // Update user (admin only)
 export const updateUser = async (req: Request<{ id: string }>, res: Response) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
-    const updatedBy = req.user?.userId;
-
-    if (!updatedBy) {
-      res.status(401).json({ 
-        error: 'Authentication required',
-        code: 'NO_AUTH'
-      });
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required', code: 'NO_AUTH' });
       return;
     }
-
-    const updatedUser = await authService.updateUser(id, updates, updatedBy);
-
-    res.json({
-      message: 'User updated successfully',
-      user: updatedUser
-    });
+    const updatedUser = await authService.updateUser(req.params.id, req.body, req.user);
+    res.json({ message: 'User updated successfully', user: updatedUser });
   } catch (error) {
-    console.error('Update user error:', error);
-    res.status(500).json({ 
-      error: 'Failed to update user',
-      code: 'INTERNAL_ERROR'
-    });
+    if (error instanceof UserManagementError) {
+      res.status(error.statusCode).json({ error: error.message, code: 'USER_UPDATE_REFUSED' });
+      return;
+    }
+    logger.error(error, 'Update user error');
+    res.status(500).json({ error: 'Failed to update user', code: 'INTERNAL_ERROR' });
   }
 };
 
 // Delete user (admin only)
 export const deleteUser = async (req: Request<{ id: string }>, res: Response) => {
   try {
-    const { id } = req.params;
-    const deletedBy = req.user?.userId;
-
-    if (!deletedBy) {
-      res.status(401).json({ 
-        error: 'Authentication required',
-        code: 'NO_AUTH'
-      });
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required', code: 'NO_AUTH' });
       return;
     }
-
-    await authService.deleteUser(id, deletedBy);
-
+    await authService.deleteUser(req.params.id, req.user);
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    console.error('Delete user error:', error);
-    res.status(500).json({ 
-      error: 'Failed to delete user',
-      code: 'INTERNAL_ERROR'
-    });
+    if (error instanceof UserManagementError) {
+      res.status(error.statusCode).json({ error: error.message, code: 'USER_DELETE_REFUSED' });
+      return;
+    }
+    logger.error(error, 'Delete user error');
+    res.status(500).json({ error: 'Failed to delete user', code: 'INTERNAL_ERROR' });
   }
 };
 

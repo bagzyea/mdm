@@ -51,6 +51,20 @@ describe('Auth Schemas', () => {
   });
 
   describe('registerSchema', () => {
+    it.each(['allan.agaba', 'j-doe', 'j_doe'])('accepts a directory-style username: %s', (username) => {
+      const { error } = registerSchema.validate({
+        username, email: 'x@ubos.org', password: 'Str0ng!Pass', firstName: 'A', lastName: 'B',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it.each(['UBOS0\\jdoe', 'a b', 'x@y'])('rejects %s as a username', (username) => {
+      const { error } = registerSchema.validate({
+        username, email: 'x@ubos.org', password: 'Str0ng!Pass', firstName: 'A', lastName: 'B',
+      });
+      expect(error).toBeDefined();
+    });
+
     it('should validate valid registration data', () => {
       const validData = {
         username: 'testuser',
