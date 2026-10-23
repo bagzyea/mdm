@@ -16,7 +16,7 @@ Last reviewed: **29 September 2026**.
 | Area | State |
 |---|---|
 | Backend API | Live on UBOSASSETS-HQ. 287 automated tests |
-| Admin dashboard | Live at **http://10.10.10.241:5002** |
+| Admin dashboard | Live at **http://ubosmdm.ubos.org:5002** (office network only) |
 | Sign-in | MDM accounts, or a UBOS Active Directory login for people added to MDM |
 | Android agent | Builds, with 41 unit tests. **Not yet run on a real tablet**, and still a Device Admin rather than a Device Owner, so many settings report "unsupported" |
 | Asset Management System link | Planned: [`docs/plans/ams-integration.md`](docs/plans/ams-integration.md) |
@@ -28,7 +28,8 @@ before relying on any control.
 
 ## Using it
 
-Open **http://10.10.10.241:5002** and sign in with either:
+Open **http://ubosmdm.ubos.org:5002** (or http://10.10.10.241:5002) from the office network
+and sign in with either:
 
 - your **UBOS domain account** (`jdoe`, `UBOS0\jdoe` or `jdoe@ubos.local`), if an
   administrator has added you to MDM; or

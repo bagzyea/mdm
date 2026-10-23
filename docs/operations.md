@@ -16,9 +16,12 @@ administer, back up and troubleshoot it. Last reviewed **29 September 2026**.
 
 - The containers share the Docker network `mdm_default`. Inside it, the database is `db`
   and Redis is `redis`.
-- The dashboard proxies `/api` to the backend, so REST calls are same-origin.
-  Socket.IO connects straight to :5001, so the dashboard's origin must be allowed; see
-  [Troubleshooting](#troubleshooting).
+- Users open **http://ubosmdm.ubos.org:5002**: the name resolves to this server on the
+  office DNS only, so it is unreachable from outside, as intended.
+- The dashboard proxies `/api`, `/socket.io` (live updates) and `/downloads` (signed APK
+  links) to the backend, so a browser only ever talks to :5002. Each address people use
+  must still be listed in `ALLOWED_ORIGINS`; see [Troubleshooting](#troubleshooting).
+- Port 5001 is still reached directly by tablets running the current test agent.
 - The backend container bind-mounts `backend/` and runs `nodemon`: editing
   `backend/src` on the host reloads the live API. Dependencies and the shared
   `@mdm/shared-types` contract are baked into the image, so changing either needs a
@@ -163,7 +166,7 @@ certificate and security tables, which went unnoticed until 29 September 2026.
 
 | Symptom | Check |
 |---|---|
-| Dashboard loads but nothing updates live | Socket.IO blocked by CORS. `curl -s -i "http://10.10.10.241:5001/socket.io/?EIO=4&transport=polling" -H 'Origin: http://10.10.10.241:5002' \| grep -i access-control-allow-origin`: no output means the origin is missing from `ALLOWED_ORIGINS` |
+| Dashboard loads but nothing updates live | Socket.IO blocked by CORS. `curl -s -i "http://10.10.10.241:5001/socket.io/?EIO=4&transport=polling" -H 'Origin: http://ubosmdm.ubos.org:5002' \| grep -i access-control-allow-origin`: no output means the origin is missing from `ALLOWED_ORIGINS` |
 | Backend won't start | `docker logs --tail 100 mdm-mdm-backend-1`. A configuration error names the missing or weak setting |
 | Sign-in fails for a domain user | Their MDM account exists and is active, with the username matching their domain username or the email matching their UBOS email. "Directory could not be reached" in the error means AD is unreachable from the container |
 | Dashboard down | `systemctl status mdm-dashboard`, `journalctl -u mdm-dashboard -n 100` |

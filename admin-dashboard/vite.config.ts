@@ -29,6 +29,19 @@ export default defineConfig({
         target: 'http://localhost:5001', // Use Docker service name
         changeOrigin: true,
         secure: false
+      },
+      // Live updates and signed APK downloads also go through this port, so a browser
+      // only ever needs :5002 and the dashboard works under any hostname.
+      '/socket.io': {
+        target: 'http://localhost:5001',
+        ws: true,
+        changeOrigin: true
+      },
+      '/downloads': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000
       }
     }
   },

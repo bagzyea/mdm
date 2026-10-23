@@ -35,7 +35,8 @@ class WebSocketService {
       return;
     }
 
-    this.socket = io(import.meta.env.VITE_WS_URL || 'http://localhost:5001', {
+    // Same origin by default: the dashboard proxies /socket.io to the API.
+    this.socket = io(import.meta.env.VITE_WS_URL || window.location.origin, {
       transports: ['websocket'],
       upgrade: true,
       rememberUpgrade: true,
