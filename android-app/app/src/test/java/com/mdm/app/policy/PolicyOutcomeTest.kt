@@ -104,6 +104,19 @@ class PolicyOutcomeTest {
     }
 
     @Test
+    fun `a setting the tablet does not implement is unsupported, not an error or a success`() {
+        // setFactoryResetProtectionPolicy throws this on models without FRP support.
+        val outcome = PolicyOutcome("system", PrivilegeLevel.DEVICE_OWNER)
+        outcome.setting(ResetProtection.RULE, PrivilegeLevel.DEVICE_OWNER) {
+            throw UnsupportedOperationException("FRP not supported")
+        }
+
+        val result = outcome.result()
+        assertEquals(PolicyStatus.UNSUPPORTED, result.status)
+        assertTrue(result.message.contains(ResetProtection.RULE))
+    }
+
+    @Test
     fun `an unexpected failure is an error, not a success`() {
         val outcome = PolicyOutcome("security", PrivilegeLevel.DEVICE_OWNER)
         outcome.setting("cameraDisabled", PrivilegeLevel.DEVICE_ADMIN) {

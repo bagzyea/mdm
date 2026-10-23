@@ -3,6 +3,7 @@ import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
 import { redactSensitive } from '../utils/redact';
 import { toJson, isPrismaError, errorMessage, definedOnly } from '../utils/prisma';
 import prisma from '../db';
+import { userHasPermission } from '../middleware/auth';
 import { DeviceStatus } from '@prisma/client';
 import {
   consumeEnrollmentToken,
@@ -355,7 +356,8 @@ export const sendCommand = async (req: Request<{ deviceId: string }>, res: Respo
     const { commands, expiresAt } = await getCommandService().createCommands({
       deviceIds: [device.id],
       command: commandPayload.command,
-      parameters: commandPayload.parameters
+      parameters: commandPayload.parameters,
+      allowDestructive: userHasPermission(req.user, 'devices', 'delete')
     });
 
     res.status(201).json({ ...commands[0], expiresAt });

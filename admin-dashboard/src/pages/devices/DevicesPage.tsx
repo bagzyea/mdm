@@ -103,6 +103,11 @@ const DevicesPage: React.FC = () => {
   const [selectedPolicies, setSelectedPolicies] = useState<string[]>([]);
   const [summary, setSummary] = useState<DeviceHealthSummary | null>(null);
   const [outcome, setOutcome] = useState<CommandOutcomeMessage | null>(null);
+  // Reclaim: erase the tablet and clear Factory Reset Protection (RECLAIM_DEVICE).
+  const [reclaimTarget, setReclaimTarget] = useState<Device | null>(null);
+  const [reclaimConfirmText, setReclaimConfirmText] = useState('');
+  const [reclaimWipeSd, setReclaimWipeSd] = useState(false);
+  const [reclaimBusy, setReclaimBusy] = useState(false);
   const [enrollmentCode, setEnrollmentCode] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -339,6 +344,34 @@ const DevicesPage: React.FC = () => {
     return JSON.stringify(payload);
   };
   const canManageDevices = hasPermission('devices', 'create') || hasPermission('devices', 'update');
+  // The server queues RECLAIM_DEVICE only for users who may delete devices.
+  const canReclaim = hasPermission('devices', 'delete');
+
+  const openReclaim = (device: Device) => {
+    handleMenuClose();
+    setReclaimTarget(device);
+    setReclaimConfirmText('');
+    setReclaimWipeSd(false);
+  };
+
+  const sendReclaim = async () => {
+    if (!reclaimTarget) return;
+    setReclaimBusy(true);
+    try {
+      const sent = await apiService.sendCommand(reclaimTarget.id, 'RECLAIM_DEVICE', {
+        // The server refuses an erase unless the caller states how many tablets it reaches.
+        confirmCount: 1,
+        wipeExternalStorage: reclaimWipeSd,
+      });
+      setOutcome(describeSingleCommand('Reclaim', reclaimTarget.deviceName, reclaimTarget.lastSeen, sent));
+      setReclaimTarget(null);
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to reclaim device');
+    } finally {
+      setReclaimBusy(false);
+    }
+  };
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ mb: 5, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 3 }}>
@@ -653,6 +686,14 @@ const DevicesPage: React.FC = () => {
         >
           <DeleteForever sx={{ mr: 1 }} /> Revoke (mark wiped)
         </MenuItem>
+        {canReclaim && (
+          <MenuItem
+            onClick={() => selectedDevice && openReclaim(selectedDevice)}
+            sx={{ color: 'error.main' }}
+          >
+            <DeleteForever sx={{ mr: 1 }} /> Reclaim (erase and clear Google lock)
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => selectedDevice && handleDeviceAction('delete', selectedDevice)}
           sx={{ color: 'error.main' }}
@@ -660,6 +701,51 @@ const DevicesPage: React.FC = () => {
           <DeleteForever sx={{ mr: 1 }} /> Delete from MDM
         </MenuItem>
       </Menu>
+
+      {/* Reclaim: the only way to recover a tablet tied to a personal Google account
+          without that person. Typed confirmation, because it erases the tablet. */}
+      <Dialog open={reclaimTarget !== null} onClose={() => !reclaimBusy && setReclaimTarget(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Reclaim this tablet?</DialogTitle>
+        <DialogContent>
+          {reclaimTarget && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+              <Alert severity="error">
+                This <strong>erases everything</strong> on {reclaimTarget.deviceName} and clears Google
+                Factory Reset Protection, so the tablet comes back to setup without asking for the
+                Google account that was last on it. It cannot be undone.
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                Census data not yet synced will be lost. If the tablet is offline, it erases itself
+                when it next checks in. Once it reports, MDM revokes it; set it up again on the
+                provisioning bench. Works only on tablets set up as Device Owner; any other tablet
+                refuses, and nothing is erased.
+              </Typography>
+              <FormControlLabel
+                control={<Checkbox checked={reclaimWipeSd} onChange={(e) => setReclaimWipeSd(e.target.checked)} />}
+                label="Also erase the SD card"
+              />
+              <TextField
+                fullWidth
+                label={`Type ${reclaimTarget.deviceName} to confirm`}
+                value={reclaimConfirmText}
+                onChange={(e) => setReclaimConfirmText(e.target.value)}
+                autoComplete="off"
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReclaimTarget(null)} disabled={reclaimBusy}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={sendReclaim}
+            disabled={reclaimBusy || !reclaimTarget || reclaimConfirmText.trim() !== reclaimTarget.deviceName}
+          >
+            {reclaimBusy ? 'Sending…' : 'Reclaim tablet'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Enrollment Dialog (Zero-Touch QR) */}
       <Dialog open={openDialog && dialogType === 'enroll'} onClose={handleCloseDialog} maxWidth="md" fullWidth>

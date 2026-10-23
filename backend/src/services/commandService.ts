@@ -3,11 +3,12 @@ import { CommandType, CreateCommandRequest, CommandResult } from '../types/comma
 import prisma from '../db';
 import config from '../config/env';
 import logger from '../logger';
-import { deviceRoom } from '../socket/registry';
-import { isAgentCommand } from '@mdm/shared-types';
+import { deviceRoom, disconnectDevice } from '../socket/registry';
+import { isAgentCommand, isDestructiveCommand } from '@mdm/shared-types';
 import { Prisma, RemoteCommand } from '@prisma/client';
 import { isRevoked } from './devicePresence';
 import { recordDeviceOutcome } from './provisioningOutcome';
+import { revokeDeviceTokens } from './enrollmentService';
 
 /** The command is not one the agent implements, so queueing it could only fail. */
 export class UnsupportedCommandError extends Error {
@@ -21,8 +22,7 @@ export class UnsupportedCommandError extends Error {
 
 /** The request cannot be queued as given: bad parameters, or no eligible device. */
 export class CommandRequestError extends Error {
-  readonly statusCode = 400;
-  constructor(message: string, readonly code: string) {
+  constructor(message: string, readonly code: string, readonly statusCode = 400) {
     super(message);
     this.name = 'CommandRequestError';
   }
@@ -47,6 +47,12 @@ export interface CreateCommandsInput {
   parameters?: unknown;
   /** Push to connected devices now. False leaves them for the queue and the agent poll. */
   dispatch?: boolean;
+  /**
+   * Whether the caller may send commands that erase tablets (DESTRUCTIVE_COMMANDS).
+   * Controllers set it from the user's devices:delete permission; every other caller
+   * (policies, provisioning, field configuration) leaves it false.
+   */
+  allowDestructive?: boolean;
 }
 
 export interface CreateCommandsResult {
@@ -91,9 +97,14 @@ export class CommandService {
    * @throws CommandRequestError when parameters are invalid or no device is eligible.
    */
   async createCommands(input: CreateCommandsInput): Promise<CreateCommandsResult> {
-    const { deviceIds, command, parameters, dispatch = true } = input;
+    const { deviceIds, command, parameters, dispatch = true, allowDestructive = false } = input;
 
     if (!isAgentCommand(command)) throw new UnsupportedCommandError(command);
+
+    const destructive = isDestructiveCommand(command);
+    if (destructive && !allowDestructive) {
+      throw new CommandRequestError(`${command} erases tablets and needs the devices:delete permission`, 'FORBIDDEN_COMMAND', 403);
+    }
 
     const invalid = validateCommandParameters(command, parameters);
     if (invalid) throw new CommandRequestError(invalid, 'INVALID_PARAMETERS');
@@ -108,6 +119,15 @@ export class CommandService {
 
     if (eligible.length === 0) {
       throw new CommandRequestError('No eligible devices found for this command', 'NO_ELIGIBLE_DEVICES');
+    }
+
+    // The caller states how many tablets it means to erase; anything else is refused.
+    if (destructive && (parameters as { confirmCount?: unknown } | undefined)?.confirmCount !== eligible.length) {
+      throw new CommandRequestError(
+        `${command} would erase ${eligible.length} tablet(s); confirm that number to proceed`,
+        'CONFIRMATION_REQUIRED',
+        422
+      );
     }
 
     const params = (parameters ?? {}) as Prisma.InputJsonValue;
@@ -288,6 +308,24 @@ export class CommandService {
           } as any
         }
       });
+
+      // A reclaimed tablet is erasing itself. Revoke it now, so its old credentials are
+      // refused and it re-enrolls as a new device once it is set up again.
+      if (command.command === 'RECLAIM_DEVICE' && result.success) {
+        await prisma.device.updateMany({
+          where: { id: command.deviceId, status: { not: 'WIPED' } },
+          data: { status: 'WIPED' }
+        });
+        await revokeDeviceTokens(deviceId, `reclaimed:${commandId}`);
+        disconnectDevice(deviceId, 'This device has been reclaimed and is erasing itself');
+        await prisma.deviceEvent.create({
+          data: {
+            deviceId: command.deviceId,
+            eventType: 'STATUS_CHANGED',
+            eventData: { oldStatus: command.device.status, newStatus: 'WIPED', changedBy: `reclaim:${commandId}` }
+          }
+        });
+      }
 
       // A field configuration's session is settled by the command's own result, which
       // reaches us over HTTP as well as the socket — so it works for offline tablets.

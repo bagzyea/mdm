@@ -46,9 +46,25 @@ export const AGENT_COMMANDS = [
   'RESTART_SERVICES',
   'PROVISION_DEVICE',
   'APPLY_FIELD_CONFIGURATION',
+  'RECLAIM_DEVICE',
 ] as const;
 
 export type CommandType = (typeof AGENT_COMMANDS)[number];
+
+/**
+ * Commands that erase a tablet. The server queues them only for users who may delete
+ * devices, and only with `parameters.confirmCount` equal to the number of tablets it
+ * will reach, so a mistyped device list or a stray API call cannot erase the fleet.
+ *
+ * RECLAIM_DEVICE factory-resets the tablet and clears Factory Reset Protection, so it
+ * comes back without asking for whichever Google account was last on it. Device Owner
+ * only; a Device Admin agent refuses it.
+ */
+export const DESTRUCTIVE_COMMANDS: readonly CommandType[] = ['RECLAIM_DEVICE'];
+
+export function isDestructiveCommand(value: unknown): boolean {
+  return typeof value === 'string' && (DESTRUCTIVE_COMMANDS as readonly string[]).includes(value);
+}
 
 export function isAgentCommand(value: unknown): value is CommandType {
   return typeof value === 'string' && (AGENT_COMMANDS as readonly string[]).includes(value);

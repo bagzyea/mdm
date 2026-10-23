@@ -46,6 +46,11 @@ class PolicyOutcome(
             // letting the policy still claim success.
             settings += SettingOutcome(name, PolicyStatus.UNSUPPORTED, "refused by platform: ${e.message}")
             AgentLog.w(TAG, "$policyName/$name refused by platform", e)
+        } catch (e: UnsupportedOperationException) {
+            // The platform has no implementation on this model (for example the
+            // organisation reset-protection policy, which depends on Google Play services).
+            settings += SettingOutcome(name, PolicyStatus.UNSUPPORTED, "not supported on this tablet: ${e.message}")
+            AgentLog.w(TAG, "$policyName/$name not supported on this tablet", e)
         } catch (e: Exception) {
             settings += SettingOutcome(name, PolicyStatus.ERROR, e.message ?: e::class.java.simpleName)
             AgentLog.e(TAG, "$policyName/$name failed", e)

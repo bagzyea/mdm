@@ -51,6 +51,10 @@ const commandParametersSchema = Joi.object({
 
   // Location
   enableHighAccuracy: Joi.boolean(),
+
+  // Destructive commands (RECLAIM_DEVICE): the number of tablets the caller means to erase.
+  confirmCount: Joi.number().integer().min(1).max(5000),
+  wipeExternalStorage: Joi.boolean(),
 }).unknown(true);
 
 export const createCommandSchema = Joi.object({

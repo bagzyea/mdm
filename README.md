@@ -15,10 +15,10 @@ Last reviewed: **29 September 2026**.
 
 | Area | State |
 |---|---|
-| Backend API | Live on UBOSASSETS-HQ. 287 automated tests |
+| Backend API | Live on UBOSASSETS-HQ at https://ubosmdm.ubos.org. 309 automated tests |
 | Admin dashboard | Live at **http://ubosmdm.ubos.org:5002** (office network only) |
 | Sign-in | MDM accounts, or a UBOS Active Directory login for people added to MDM |
-| Android agent | Builds, with 41 unit tests. **Not yet run on a real tablet**, and still a Device Admin rather than a Device Owner, so many settings report "unsupported" |
+| Android agent | Builds, with 46 unit tests. **Not yet run on a real tablet**, and still a Device Admin rather than a Device Owner, so many settings report "unsupported" |
 | Asset Management System link | Planned: [`docs/plans/ams-integration.md`](docs/plans/ams-integration.md) |
 
 What is verified and what is not is set out in [`SECURITY.md`](SECURITY.md). Read it
@@ -97,7 +97,7 @@ It is an npm workspace. For development:
 ```bash
 npm ci                           # backend, dashboard and shared types
 npm run build:types              # build the shared contract
-cd backend && npx prisma generate && npm test      # 287 tests, typechecked
+cd backend && npx prisma generate && npm test      # 309 tests, typechecked
 cd admin-dashboard && npm run type-check && npm run build
 ```
 

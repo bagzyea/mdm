@@ -1,8 +1,10 @@
 package com.mdm.app.policy
 
 import android.app.admin.DevicePolicyManager
+import android.app.admin.FactoryResetProtectionPolicy
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.UserManager
 import android.util.Log
@@ -325,7 +327,48 @@ class PolicyEngine(private val context: Context) {
         restriction(outcome, rules, "timeDateModificationDisabled", UserManager.DISALLOW_CONFIG_DATE_TIME)
         restriction(outcome, rules, "accountModificationDisabled", UserManager.DISALLOW_MODIFY_ACCOUNTS)
 
+        applyResetProtection(outcome, rules)
+
         return outcome.result()
+    }
+
+    /**
+     * Only UBOS's own Google accounts may unlock this tablet after a factory reset, so a
+     * personal account left on it cannot lock the organisation out (see ResetProtection).
+     */
+    private fun applyResetProtection(outcome: PolicyOutcome, rules: Map<String, Any?>) {
+        if (!rules.containsKey(ResetProtection.RULE)) return
+
+        val accounts = when (val parsed = ResetProtection.parse(rules[ResetProtection.RULE])) {
+            is ResetProtection.Parsed.Invalid -> {
+                outcome.unsupported(ResetProtection.RULE, parsed.reason)
+                return
+            }
+            is ResetProtection.Parsed.Accounts -> parsed.ids
+        }
+
+        // On a model without FRP support the platform throws UnsupportedOperationException,
+        // which PolicyOutcome reports as unsupported rather than as applied.
+        outcome.setting(ResetProtection.RULE, PrivilegeLevel.DEVICE_OWNER) {
+            devicePolicyManager.setFactoryResetProtectionPolicy(
+                adminComponent,
+                FactoryResetProtectionPolicy.Builder()
+                    .setFactoryResetProtectionAccounts(accounts)
+                    .setFactoryResetProtectionEnabled(true)
+                    .build()
+            )
+            // Read back, so a policy the platform accepted but did not keep is not reported
+            // as applied.
+            val stored = devicePolicyManager.getFactoryResetProtectionPolicy(adminComponent)
+            check(stored != null && stored.isFactoryResetProtectionEnabled &&
+                stored.factoryResetProtectionAccounts.toSet() == accounts.toSet()) {
+                "the tablet did not keep the reset-protection accounts"
+            }
+            // Tells Google Play services, which enforces FRP, to read the new policy now.
+            context.sendBroadcast(
+                Intent("com.google.android.gms.auth.FRP_CONFIG_CHANGED").setPackage("com.google.android.gms")
+            )
+        }
     }
     
     /**

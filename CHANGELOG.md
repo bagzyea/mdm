@@ -8,6 +8,25 @@ recorded work as complete that was not (see `SECURITY.md`).
 
 ---
 
+## 2026-10-23 — Tablets locked to personal Google accounts
+
+Tablets set up with enumerators' personal Google accounts were unusable after a reset
+until that person could be found (Factory Reset Protection). See
+`docs/android-agent.md#google-accounts-and-factory-reset-protection`.
+
+- **Reclaim** (`RECLAIM_DEVICE`): erases a tablet and clears FRP, so it returns to setup
+  without asking for any account. Admins only (`devices:delete`); the server refuses an
+  erase unless `confirmCount` equals the number of tablets it reaches, and the dashboard
+  asks for the device's name. The SD card is kept unless asked. When the tablet reports,
+  the server marks it WIPED and revokes its credentials. A Device Admin agent refuses it
+  rather than wipe without clearing FRP.
+- **UBOS unlock accounts** (`factoryResetProtectionAccounts`, Policies → System): after
+  a reset, only these UBOS Google accounts can set the tablet up. Emails are refused (they
+  match nobody and would lock a reset tablet for good); models whose Play services lack
+  the policy report it as unsupported.
+- Both need the agent as Device Owner, as does the existing "block adding or removing
+  accounts" setting, now labelled plainly.
+
 ## 2026-10-23 — Sign-in hardening for the HTTPS address
 
 MDM has been served by nginx at https://ubosmdm.ubos.org since 15 October

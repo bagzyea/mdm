@@ -4,6 +4,7 @@ import { getCommandService } from '../services/commandServiceInstance';
 import { sendCommandError } from '../services/commandService';
 import logger from '../logger';
 import prisma from '../db';
+import { userHasPermission } from '../middleware/auth';
 
 
 // Get all commands with filtering and pagination
@@ -114,7 +115,9 @@ export const createCommand = async (req: Request, res: Response): Promise<void> 
       deviceIds: commandData.deviceIds,
       command: commandData.command,
       parameters: commandData.parameters,
-      dispatch: !commandData.executeAt
+      dispatch: !commandData.executeAt,
+      // Erasing tablets (RECLAIM_DEVICE) needs more than commands:create.
+      allowDestructive: userHasPermission(req.user, 'devices', 'delete')
     });
 
     res.status(201).json({

@@ -164,6 +164,11 @@ export const authenticateDevice = async (req: Request, res: Response, next: Next
   }
 };
 
+/** Whether the signed-in user holds a permission, for checks that depend on the request body. */
+export function userHasPermission(user: Request['user'] | undefined, resource: string, action: string): boolean {
+  return !!user && authService.hasPermission(user.role as UserRole, resource, action);
+}
+
 // Create role-based rate limiters
 export const createRoleBasedRateLimit = () => {
   const limiters: Record<UserRole, any> = {} as any;

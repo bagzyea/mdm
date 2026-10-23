@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import { parseGoogleAccountIds } from '../../utils/resetProtection';
 interface Policy {
   id: string;
   name: string;
@@ -250,9 +251,22 @@ const PoliciesPage: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to update policy status');
     }
   };
+  // Free text for the reset-protection accounts, so separators can be typed; the parsed
+  // list is what is stored in the rules.
+  const [frpAccountsText, setFrpAccountsText] = useState('');
+  const frpParsed = parseGoogleAccountIds(frpAccountsText);
+  const handleFrpAccountsChange = (text: string) => {
+    setFrpAccountsText(text);
+    const { ids } = parseGoogleAccountIds(text);
+    const rules = { ...formData.rules };
+    if (ids.length > 0) rules.factoryResetProtectionAccounts = ids;
+    else delete rules.factoryResetProtectionAccounts;
+    setFormData({ ...formData, rules });
+  };
   const handleOpenDialog = (policy?: Policy) => {
     if (policy) {
       setEditingPolicy(policy);
+      setFrpAccountsText((policy.rules?.factoryResetProtectionAccounts ?? []).join('\n'));
       setFormData({
         name: policy.name,
         description: policy.description,
@@ -264,6 +278,7 @@ const PoliciesPage: React.FC = () => {
       });
     } else {
       setEditingPolicy(null);
+      setFrpAccountsText('');
       setFormData({
         name: '',
         description: '',
@@ -540,7 +555,26 @@ const PoliciesPage: React.FC = () => {
         <FormControlLabel control={<Switch checked={formData.rules.timeDateModificationDisabled} onChange={(e) => handleRuleChange('timeDateModificationDisabled', e.target.checked)} />} label="Disable User Time/Date Changes" />
       </Grid>
       <Grid item xs={12}>
-        <FormControlLabel control={<Switch checked={formData.rules.accountModificationDisabled} onChange={(e) => handleRuleChange('accountModificationDisabled', e.target.checked)} />} label="Block Account Modification (Prevents Personal Accounts/FRP)" />
+        <FormControlLabel control={<Switch checked={formData.rules.accountModificationDisabled} onChange={(e) => handleRuleChange('accountModificationDisabled', e.target.checked)} />} label="Block adding or removing accounts (stops personal Google accounts being signed in)" />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          multiline
+          minRows={2}
+          label="UBOS Google accounts that can unlock a reset tablet"
+          value={frpAccountsText}
+          onChange={(e) => handleFrpAccountsChange(e.target.value)}
+          placeholder="One Google account ID per line, e.g. 112233445566778899"
+          error={frpParsed.problems.length > 0}
+          helperText={
+            frpParsed.problems.length > 0
+              ? frpParsed.problems.join('; ')
+              : 'After a factory reset only these accounts can set the tablet up again, so a personal ' +
+                'account left on it cannot lock UBOS out. Use numeric account IDs, not emails ' +
+                '(see docs/android-agent.md). Needs the agent as Device Owner on Android 11+.'
+          }
+        />
       </Grid>
     </Grid>
   );
@@ -904,6 +938,9 @@ const PoliciesPage: React.FC = () => {
           <Button
             onClick={editingPolicy ? handleUpdatePolicy : handleCreatePolicy}
             variant="contained"
+            // An invalid unlock account would be dropped silently and could leave reset
+            // tablets that nobody can unlock.
+            disabled={formData.type === 'SYSTEM' && frpParsed.problems.length > 0}
           >
             {editingPolicy ? 'Update' : 'Create'}
           </Button>

@@ -3,6 +3,7 @@ package com.mdm.app.services
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.mdm.app.admin.MDMDeviceAdminReceiver
 import com.mdm.app.api.ApiClient
@@ -17,6 +18,7 @@ import com.mdm.app.utils.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -114,6 +116,7 @@ class CommandExecutor(
         "RESTART_SERVICES" -> restartServices()
         "PROVISION_DEVICE" -> provision(commandId, payload)
         "APPLY_FIELD_CONFIGURATION" -> applyFieldConfiguration(payload)
+        "RECLAIM_DEVICE" -> reclaim(commandId, payload)
         else -> Outcome.failure("Unknown command type: $commandType")
     }
 
@@ -298,6 +301,40 @@ class CommandExecutor(
         )
     }
 
+    /**
+     * Factory-reset the tablet and clear Factory Reset Protection, so it comes back to
+     * setup without asking for the Google account that was last on it. This is how UBOS
+     * recovers a tablet set up with an enumerator's personal account without needing
+     * that person. Device Owner only: a Device Admin can wipe but not clear FRP, which
+     * would leave the tablet locked to that account, so it refuses instead.
+     *
+     * The result is sent before wiping, because nothing runs on this device afterwards.
+     * The server revokes the device when it receives it.
+     */
+    private suspend fun reclaim(commandId: String, payload: JSONObject?): Outcome {
+        val held = policyEngine.privilegeLevel()
+        if (held != PrivilegeLevel.DEVICE_OWNER) {
+            return Outcome.failure("RECLAIM_DEVICE " + DevicePrivilege.explain(held, PrivilegeLevel.DEVICE_OWNER))
+        }
+
+        var flags = DevicePolicyManager.WIPE_RESET_PROTECTION_DATA
+        // The SD card is left alone unless asked: it may hold census data not yet synced.
+        if (payload?.optBoolean("wipeExternalStorage", false) == true) {
+            flags = flags or DevicePolicyManager.WIPE_EXTERNAL_STORAGE
+        }
+
+        sendResult(commandId, true, mapOf("erasing" to true, "resetProtectionCleared" to true), null)
+        delay(RECLAIM_REPORT_GRACE_MS)
+
+        Log.w(TAG, "Reclaiming device: factory reset with reset protection cleared ($commandId)")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            devicePolicyManager.wipeDevice(flags)
+        } else {
+            devicePolicyManager.wipeData(flags, "Reclaimed by UBOS MDM")
+        }
+        return Outcome.reportedSeparately()
+    }
+
     private suspend fun sendResult(commandId: String, success: Boolean, data: Any?, error: String?) {
         if (!mdmService.isWebSocketConnected()) {
             // Commands collected by the HTTP poll run exactly when there is no socket, so
@@ -364,5 +401,7 @@ class CommandExecutor(
 
     private companion object {
         const val TAG = "CommandExecutor"
+        /** Time for the reclaim result to leave the device before the wipe begins. */
+        const val RECLAIM_REPORT_GRACE_MS = 5_000L
     }
 }

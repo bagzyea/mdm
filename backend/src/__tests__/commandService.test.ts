@@ -19,6 +19,16 @@ jest.mock('../db', () => ({
   closeDatabase: jest.fn(),
 }));
 
+const mockRevokeDeviceTokens = jest.fn().mockResolvedValue(1);
+jest.mock('../services/enrollmentService', () => ({
+  revokeDeviceTokens: (...args: unknown[]) => mockRevokeDeviceTokens(...args),
+}));
+const mockDisconnectDevice = jest.fn();
+jest.mock('../socket/registry', () => ({
+  ...jest.requireActual('../socket/registry'),
+  disconnectDevice: (...args: unknown[]) => mockDisconnectDevice(...args),
+}));
+
 import { CommandService } from '../services/commandService';
 
 describe('CommandService', () => {
@@ -286,5 +296,92 @@ describe('CommandService.createCommands — the one creation path', () => {
     await expect(service().createCommands({ deviceIds: ['tab-2'], command: 'LOCK_DEVICE' })).rejects.toMatchObject({
       code: 'NO_ELIGIBLE_DEVICES',
     });
+  });
+});
+
+describe('RECLAIM_DEVICE: erasing a tablet and clearing its Google lock', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (mockPrisma.device as any).findMany = jest.fn().mockResolvedValue([
+      { id: 'db-1', deviceId: 'tab-1', status: 'INACTIVE', isRetired: false },
+      { id: 'db-2', deviceId: 'tab-2', status: 'ACTIVE', isRetired: false },
+    ]);
+    (mockPrisma.remoteCommand as any).createManyAndReturn = jest.fn().mockImplementation(({ data }: any) =>
+      data.map((d: any, i: number) => ({ id: `cmd-${i}`, createdAt: new Date(), ...d }))
+    );
+    (mockPrisma.deviceEvent as any).createMany = jest.fn();
+  });
+
+  const service = () =>
+    new CommandService({
+      to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+      in: jest.fn().mockReturnValue({ fetchSockets: jest.fn().mockResolvedValue([]) }),
+    } as any);
+
+  it('is refused for a caller without permission to delete devices, before touching the database', async () => {
+    await expect(
+      service().createCommands({ deviceIds: ['tab-1'], command: 'RECLAIM_DEVICE', parameters: { confirmCount: 1 } })
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_COMMAND', statusCode: 403 });
+    expect((mockPrisma.device as any).findMany).not.toHaveBeenCalled();
+  });
+
+  it('needs the caller to confirm exactly how many tablets it will erase', async () => {
+    await expect(
+      service().createCommands({
+        deviceIds: ['tab-1', 'tab-2'],
+        command: 'RECLAIM_DEVICE',
+        parameters: { confirmCount: 1 },
+        allowDestructive: true,
+      })
+    ).rejects.toMatchObject({ code: 'CONFIRMATION_REQUIRED', statusCode: 422 });
+    expect((mockPrisma.remoteCommand as any).createManyAndReturn).not.toHaveBeenCalled();
+
+    const result = await service().createCommands({
+      deviceIds: ['tab-1', 'tab-2'],
+      command: 'RECLAIM_DEVICE',
+      parameters: { confirmCount: 2 },
+      allowDestructive: true,
+    });
+    expect(result.commands).toHaveLength(2);
+  });
+
+  it('revokes the tablet once it reports that it is erasing itself', async () => {
+    (mockPrisma.remoteCommand.findUnique as jest.Mock).mockResolvedValue({
+      id: 'cmd-9',
+      command: 'RECLAIM_DEVICE',
+      deviceId: 'db-1',
+      parameters: { confirmCount: 1 },
+      device: { deviceId: 'tab-1', status: 'ACTIVE' },
+    });
+    (mockPrisma.remoteCommand.update as jest.Mock).mockResolvedValue({});
+    (mockPrisma.device as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (mockPrisma.deviceEvent.create as jest.Mock).mockResolvedValue({});
+
+    await service().handleCommandResponse('tab-1', 'cmd-9', { success: true, timestamp: new Date() } as any);
+
+    expect((mockPrisma.device as any).updateMany).toHaveBeenCalledWith({
+      where: { id: 'db-1', status: { not: 'WIPED' } },
+      data: { status: 'WIPED' },
+    });
+    expect(mockRevokeDeviceTokens).toHaveBeenCalledWith('tab-1', 'reclaimed:cmd-9');
+    expect(mockDisconnectDevice).toHaveBeenCalledWith('tab-1', expect.any(String));
+  });
+
+  it('leaves the tablet alone when the agent refused (not Device Owner)', async () => {
+    (mockPrisma.remoteCommand.findUnique as jest.Mock).mockResolvedValue({
+      id: 'cmd-9',
+      command: 'RECLAIM_DEVICE',
+      deviceId: 'db-1',
+      parameters: {},
+      device: { deviceId: 'tab-1', status: 'ACTIVE' },
+    });
+    (mockPrisma.remoteCommand.update as jest.Mock).mockResolvedValue({});
+    (mockPrisma.device as any).updateMany = jest.fn();
+    (mockPrisma.deviceEvent.create as jest.Mock).mockResolvedValue({});
+
+    await service().handleCommandResponse('tab-1', 'cmd-9', { success: false, timestamp: new Date() } as any);
+
+    expect((mockPrisma.device as any).updateMany).not.toHaveBeenCalled();
+    expect(mockRevokeDeviceTokens).not.toHaveBeenCalled();
   });
 });

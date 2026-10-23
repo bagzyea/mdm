@@ -189,8 +189,8 @@ it needs.
 
 | Suite | Count | Notable structural checks |
 |---|---|---|
-| Backend (Jest, typechecked) | 287 | `routeAuthorization` walks the live route table; `deviceContract` / `commandContract` parse the Kotlin; `socketAuthentication` drives a real Socket.IO client |
-| Android agent (JUnit) | 41 | policy outcomes, privilege levels, certificate pins, token refresh, field configuration |
+| Backend (Jest, typechecked) | 309 | `routeAuthorization` walks the live route table; `deviceContract` / `commandContract` parse the Kotlin; `socketAuthentication` drives a real Socket.IO client |
+| Android agent (JUnit) | 46 | policy outcomes, privilege levels, certificate pins, token refresh, field configuration, reset-protection accounts |
 | Dashboard (Vitest) | 109 | 12 fail and have for some time; not yet addressed |
 
 Nothing in the agent has run on a real tablet yet.
