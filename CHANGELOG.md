@@ -8,6 +8,60 @@ recorded work as complete that was not (see `SECURITY.md`).
 
 ---
 
+## 2026-10-23 — Sign-in hardening for the HTTPS address
+
+MDM has been served by nginx at https://ubosmdm.ubos.org since 15 October
+(`ops/nginx-mdm.conf`).
+
+- **Per-account sign-in limit.** After 5 wrong passwords for one account within 15
+  minutes, sign-in for that account is paused for 15 minutes. While it is paused, Active
+  Directory is not contacted, so guessing cannot trip AD's own lockout and lock a member of
+  staff out of every UBOS system (`loginThrottle.test.ts`). Configurable with
+  `LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_MINUTES` and `LOGIN_LOCK_MINUTES`.
+- **Real client addresses behind nginx.** Behind nginx every request appeared to come from
+  the Docker gateway, so all clients shared one rate-limit allowance (5 enrolments a minute
+  for the whole fleet) and the audit log recorded the proxy. `TRUST_PROXY` names the proxy
+  to trust; `true` is refused, because it would let any caller choose its own address.
+
+## 2026-10-15 — Dashboard figures and commands that tell the truth
+
+From the UX review against Intune, Workspace ONE, SOTI, Hexnode and Scalefusion (week 1).
+
+- **Commands page could not send anything.** It posted `commandType`; the API requires
+  `command`, so every send was refused. Its six quick-action buttons were never given a
+  device and always failed, and the send buttons checked a `commands:execute` permission no
+  role has, so only super admins saw them. All three fixed.
+- **Offline tablets can be sent commands.** The target list showed only ACTIVE devices. It
+  now lists every device that is not suspended or revoked and says which ones will queue.
+- **After a command, the operator is told what happened:** sent now, or queued for a tablet
+  last seen N days ago, with the date the command will be dropped. The API now returns each
+  command's real status (it said PENDING even when delivered) and `expiresAt`.
+- **Fleet figures are counted by the server.** `/api/devices/health/summary` counts with the
+  database (it loaded every device), adds counts by status and by time since last seen, and
+  "active" now means reporting (ENROLLED no longer counts). The device list's tiles were
+  counted from the 10 rows on screen; the overview loaded the whole fleet every 30 seconds.
+- **No invented values:** a device with no last-seen time showed "Just now", an unknown
+  battery showed a red 0%, and compliance was hard-coded to compliant. An executed command
+  showed the "waiting" icon.
+- Placeholder tabs removed from Devices and Commands. The device list added another set of
+  live-update listeners on every visit (and subscribed to heartbeats twice); fixed.
+
+## 2026-10-12 — Dashboard at ubosmdm.ubos.org:5002
+
+- The dashboard is reached at **http://ubosmdm.ubos.org:5002** (office DNS only). It also
+  proxies live updates (`/socket.io`) and APK downloads (`/downloads`), so browsers no
+  longer need port 5001. Previously live updates connected to a hardcoded
+  `10.10.10.241:5001` and silently failed from any other address.
+- `ALLOWED_ORIGINS` and `PUBLIC_BASE_URL` updated for the new address.
+- **App Vault uploads over 10 MB always failed.** A global 10 MB request cap ran before
+  the upload route's own 500 MB limit. The upload route is now exempt; every other
+  request keeps the cap (`requestSizeLimit.test.ts`).
+- **App Vault category list did not match the database.** Five of the form's eight
+  categories, including the default, were refused with a 500 and the file was left on
+  disk. The form now offers the database's categories, and an unknown one is a 400 that
+  removes the file (`apkCategories.test.ts`).
+- The tablet agent (debug test build) is in the App Vault as **ubos-mdm**.
+
 ## 2026-09-29 — Code-quality audit, deployment, sign-in
 
 Merged to `main` and deployed. Details in each commit; the headlines:
