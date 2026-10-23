@@ -1,4 +1,5 @@
 import * as jwt from 'jsonwebtoken';
+import { loginThrottle } from './loginThrottle';
 import bcrypt from 'bcryptjs';
 import { 
   User, 
@@ -147,6 +148,10 @@ export class AuthService {
   async login(loginData: LoginRequest, ipAddress?: string, userAgent?: string): Promise<LoginResponse> {
     const identifier = loginData.username.trim();
 
+    // Checked before the password or the directory, so a paused account never reaches
+    // AD and cannot be pushed into AD's own lockout (see loginThrottle.ts).
+    loginThrottle.assertAllowed(identifier);
+
     let user = await prisma.user.findFirst({
       where: {
         OR: [
@@ -168,13 +173,16 @@ export class AuthService {
         authenticated = !!user && user.isActive;
         method = 'directory';
       } else if (directory.reason === 'unreachable' && !user) {
+        // Not counted: the password was never checked.
         throw new Error('Invalid credentials (the directory could not be reached; try again shortly)');
       }
     }
 
     if (!user || !authenticated) {
+      loginThrottle.recordFailure(identifier);
       throw new Error('Invalid credentials');
     }
+    loginThrottle.recordSuccess(identifier);
 
     // Update last login
     await prisma.user.update({

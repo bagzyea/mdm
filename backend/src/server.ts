@@ -16,6 +16,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { closeDatabase } from './db';
 import { DeviceHeartbeatData, CommandResponse, DeviceStatusUpdate } from '@mdm/shared-types';
 import { Prisma } from '@prisma/client';
+import { parseTrustProxy } from './config/trustProxy';
 
 // Load environment variables
 dotenv.config();
@@ -24,6 +25,8 @@ dotenv.config();
 
 // Create Express app
 const app = express();
+// Real client addresses from nginx, for rate limits and the audit log. See config/trustProxy.ts.
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 const server = createServer(app);
 
 // --- Allowed origins (shared between HTTP CORS and Socket.IO CORS) ---

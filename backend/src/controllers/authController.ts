@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { LoginThrottledError } from '../services/loginThrottle';
 import { AuthService, UserManagementError } from '../services/authService';
 import logger from '../logger';
 import prisma from '../db';
@@ -77,6 +78,16 @@ export const login = async (req: Request, res: Response) => {
       expiresIn: response.expiresIn
     });
   } catch (error) {
+    if (error instanceof LoginThrottledError) {
+      res.set('Retry-After', String(error.retryAfterSeconds));
+      res.status(429).json({
+        error: error.message,
+        code: 'LOGIN_THROTTLED',
+        retryAfterSeconds: error.retryAfterSeconds
+      });
+      return;
+    }
+
     console.error('Login error:', error);
     
     if (error instanceof Error) {
