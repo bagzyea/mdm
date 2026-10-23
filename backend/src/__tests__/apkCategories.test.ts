@@ -54,3 +54,27 @@ const dashboardAvailable = fs.existsSync(APP_VAULT_PAGE);
     expect(offered).toEqual(Object.values(APKCategory).sort());
   });
 });
+
+describe('APK upload of a package already in the vault', () => {
+  it('is a 409 that removes the uploaded file, not a 500 that leaves it behind', async () => {
+    jest.resetModules();
+    const filePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'apkdup-')), 'x.apk');
+    fs.writeFileSync(filePath, 'not really an apk');
+    jest.doMock('../services/apkInspector', () => ({
+      ...jest.requireActual('../services/apkInspector'),
+      readApkManifest: jest.fn().mockResolvedValue({ packageName: 'com.mdm.app.debug', versionName: '1.0', versionCode: 1 }),
+      assertPackageNameMatches: jest.fn(),
+      hashFile: jest.fn().mockResolvedValue('abc'),
+    }));
+    mockCreate.mockRejectedValueOnce(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+    const { uploadAPK: upload } = require('../controllers/apkRegistryController');
+
+    const req: any = { file: { path: filePath, originalname: 'x.apk', size: 17, filename: 'x.apk' }, body: { category: 'UTILITY' } };
+    const res = mockRes();
+    await upload(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].code).toBe('APK_ALREADY_REGISTERED');
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+});

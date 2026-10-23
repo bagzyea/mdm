@@ -11,6 +11,7 @@ import {
 } from '../services/apkInspector';
 import { signApkDownload } from '../services/signedDownloads';
 import prisma from '../db';
+import { isPrismaError } from '../utils/prisma';
 
 
 /** Remove a rejected upload so unverified APKs never linger in the served directory. */
@@ -102,6 +103,17 @@ export const uploadAPK = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(returnApk);
   } catch (error: any) {
+    // The vault holds one entry per package. This used to be a bare 500, and the
+    // uploaded file was left on disk.
+    if (isPrismaError(error) && error.code === 'P2002') {
+      if (req.file) await discardUpload(req.file.path);
+      res.status(409).json({
+        message: 'This app is already in the App Vault. Delete the existing entry first, then upload the new version.',
+        code: 'APK_ALREADY_REGISTERED'
+      });
+      return;
+    }
+    if (req.file) await discardUpload(req.file.path);
     console.error('Upload error:', error);
     res.status(500).json({ message: 'Error uploading APK', error: error.message });
   }
