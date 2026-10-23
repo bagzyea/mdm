@@ -56,6 +56,8 @@ export interface CreateCommandsResult {
   /** Suspended, wiped or retired devices, which are never sent commands. */
   devicesSkipped: string[];
   notificationsSent: number;
+  /** When a command still PENDING stops waiting for its device and is marked FAILED. */
+  expiresAt: Date;
 }
 
 /** Parameter rules for the commands that need them. */
@@ -121,23 +123,26 @@ export class CommandService {
       }))
     });
 
-    let notificationsSent = 0;
+    let delivered: boolean[] = commands.map(() => false);
     if (dispatch) {
       const serialById = new Map(eligible.map((d) => [d.id, d.deviceId]));
-      const results = await Promise.all(
+      delivered = await Promise.all(
         commands.map((c) =>
           this.notifyDeviceOfCommand(serialById.get(c.deviceId)!, c.id, command, c.parameters)
         )
       );
-      notificationsSent = results.filter(Boolean).length;
     }
 
+    // The rows above were read back before dispatch, so they all say PENDING. Report the
+    // status each command actually has, so the dashboard can say "sent" or "queued".
+    const createdAt = commands[0]?.createdAt ?? new Date();
     return {
-      commands,
+      commands: commands.map((c, i) => (delivered[i] ? { ...c, status: 'SENT' as const } : c)),
+      expiresAt: new Date(createdAt.getTime() + config.commandTtlSeconds * 1000),
       devicesRequested: deviceIds.length,
       devicesFound: devices.length,
       devicesSkipped,
-      notificationsSent
+      notificationsSent: delivered.filter(Boolean).length
     };
   }
 

@@ -3,6 +3,7 @@ import { DeviceInfo, CommandPayload, DeviceAnalytics } from '../types';
 import { redactSensitive } from '../utils/redact';
 import { toJson, isPrismaError, errorMessage, definedOnly } from '../utils/prisma';
 import prisma from '../db';
+import { DeviceStatus } from '@prisma/client';
 import {
   consumeEnrollmentToken,
   createEnrollmentToken,
@@ -351,13 +352,13 @@ export const sendCommand = async (req: Request<{ deviceId: string }>, res: Respo
       return;
     }
 
-    const { commands } = await getCommandService().createCommands({
+    const { commands, expiresAt } = await getCommandService().createCommands({
       deviceIds: [device.id],
       command: commandPayload.command,
       parameters: commandPayload.parameters
     });
 
-    res.status(201).json(commands[0]);
+    res.status(201).json({ ...commands[0], expiresAt });
   } catch (error) {
     if (sendCommandError(res, error)) return;
     logger.error(error, 'Error sending command');
@@ -555,43 +556,58 @@ export const getDeviceAnalytics = async (req: Request<{ deviceId: string }>, res
   }
 };
 
-export const getDeviceHealthSummary = async (req: Request, res: Response) => {
+/**
+ * Fleet counts for the dashboard: by status, by how recently devices reported, and
+ * health alarms.
+ *
+ * Counted by the database. This used to load every device row into memory, and the
+ * dashboard's own tiles were computed in the browser from one page of the device list,
+ * so at fleet scale the figures were either slow or wrong.
+ */
+export const getDeviceHealthSummary = async (_req: Request, res: Response) => {
   try {
-    const devices = await prisma.device.findMany({
-      select: {
-        id: true,
-        deviceId: true,
-        status: true,
-        batteryLevel: true,
-        isCharging: true,
-        totalStorage: true,
-        availableStorage: true,
-        totalRAM: true,
-        availableRAM: true,
-        lastSeen: true
-      }
+    const now = Date.now();
+    const hoursAgo = (h: number) => new Date(now - h * 60 * 60 * 1000);
+    // Devices that can still report: suspended, revoked and retired ones never will.
+    const reporting = { status: { in: ['ENROLLED', 'ACTIVE', 'INACTIVE'] as DeviceStatus[] }, isRetired: false };
+
+    const [
+      byStatusRows, retiredDevices, lowBatteryDevices, lowStorageRows,
+      within24h, from1to3Days, from3to7Days, over7Days
+    ] = await Promise.all([
+      prisma.device.groupBy({ by: ['status'], where: { isRetired: false }, _count: { _all: true } }),
+      prisma.device.count({ where: { isRetired: true } }),
+      prisma.device.count({ where: { ...reporting, batteryLevel: { lt: 20 } } }),
+      prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*)::bigint AS count FROM "Device"
+        WHERE "isRetired" = false AND "totalStorage" > 0 AND "availableStorage" IS NOT NULL
+          AND ("totalStorage" - "availableStorage")::float / "totalStorage" > 0.9`,
+      prisma.device.count({ where: { ...reporting, lastSeen: { gte: hoursAgo(24) } } }),
+      prisma.device.count({ where: { ...reporting, lastSeen: { lt: hoursAgo(24), gte: hoursAgo(72) } } }),
+      prisma.device.count({ where: { ...reporting, lastSeen: { lt: hoursAgo(72), gte: hoursAgo(168) } } }),
+      prisma.device.count({ where: { ...reporting, lastSeen: { lt: hoursAgo(168) } } })
+    ]);
+
+    const byStatus: Record<DeviceStatus, number> = { ENROLLED: 0, ACTIVE: 0, INACTIVE: 0, SUSPENDED: 0, WIPED: 0 };
+    for (const row of byStatusRows) byStatus[row.status] = row._count._all;
+
+    res.json({
+      totalDevices: Object.values(byStatus).reduce((a, b) => a + b, 0),
+      byStatus,
+      retiredDevices,
+      // Reporting now. ENROLLED devices have not yet sent a first heartbeat.
+      activeDevices: byStatus.ACTIVE,
+      enrolledDevices: byStatus.ENROLLED,
+      inactiveDevices: byStatus.INACTIVE,
+      suspendedDevices: byStatus.SUSPENDED,
+      revokedDevices: byStatus.WIPED,
+      lowBatteryDevices,
+      lowStorageDevices: Number(lowStorageRows[0]?.count ?? 0),
+      offlineDevices: from1to3Days + from3to7Days + over7Days,
+      lastSeen: { within24h, from1to3Days, from3to7Days, over7Days }
     });
-    
-    const healthSummary = {
-      totalDevices: devices.length,
-      activeDevices: devices.filter(d => d.status === 'ACTIVE' || d.status === 'ENROLLED').length,
-      lowBatteryDevices: devices.filter(d => d.batteryLevel && d.batteryLevel < 20).length,
-      lowStorageDevices: devices.filter(d => {
-        if (!d.totalStorage || !d.availableStorage) return false;
-        const usagePercentage = ((Number(d.totalStorage) - Number(d.availableStorage)) / Number(d.totalStorage)) * 100;
-        return usagePercentage > 90;
-      }).length,
-      offlineDevices: devices.filter(d => {
-        const lastSeen = new Date(d.lastSeen);
-        const now = new Date();
-        const hoursSinceLastSeen = (now.getTime() - lastSeen.getTime()) / (1000 * 60 * 60);
-        return hoursSinceLastSeen > 24;
-      }).length
-    };
-    
-    res.json(healthSummary);
   } catch (error) {
-    console.error('Error fetching device health summary:', error);
+    logger.error(error, 'Error fetching device health summary');
     res.status(500).json({ error: 'Failed to fetch device health summary' });
   }
 };

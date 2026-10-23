@@ -26,9 +26,8 @@ import {
   Tooltip,
   Menu,
   MenuItem,
-  Tabs,
-  Tab,
   Divider,
+  Snackbar,
   Fab,
   TablePagination,
   Checkbox,
@@ -58,6 +57,9 @@ import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService, provisioningService } from '../../services/api';
 import { ProvisioningProfile } from '../../types';
 import StatusChip from '../../components/common/StatusChip';
+import type { DeviceStatus, DeviceHealthSummary } from '../../types';
+import { formatBattery, formatLastSeen } from '../../utils/deviceDisplay';
+import { describeSingleCommand, CommandOutcomeMessage } from '../../utils/commandOutcome';
 interface Device {
   id: string;
   deviceId: string;
@@ -65,30 +67,26 @@ interface Device {
   deviceModel: string;
   osVersion: string;
   manufacturer: string;
+  /** Reporting now: status ACTIVE. */
   isActive: boolean;
-  batteryLevel: number;
+  /** Null when the tablet has never reported one. */
+  batteryLevel: number | null;
   isCharging: boolean;
   latitude?: number;
   longitude?: number;
-  lastSeen: string;
+  /** Null when the tablet has never checked in. */
+  lastSeen: string | null;
   enrolledAt: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOST';
-  complianceStatus: 'COMPLIANT' | 'NON_COMPLIANT' | 'UNKNOWN';
+  status: DeviceStatus;
   assignedPolicies: string[];
 }
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+const COMMAND_LABELS: Record<string, string> = {
+  LOCK_DEVICE: 'Lock',
+  UNLOCK_DEVICE: 'Unlock',
+  GET_DEVICE_INFO: 'Device info request',
+  LOCATE_DEVICE: 'Locate',
+  SYNC_SETTINGS: 'Settings sync',
+};
 const DevicesPage: React.FC = () => {
   const { hasPermission } = useAuthContext();
   const navigate = useNavigate();
@@ -103,7 +101,8 @@ const DevicesPage: React.FC = () => {
   const [commandParams, setCommandParams] = useState<any>({});
   const [policies, setPolicies] = useState<any[]>([]);
   const [selectedPolicies, setSelectedPolicies] = useState<string[]>([]);
-  const [tabValue, setTabValue] = useState(0);
+  const [summary, setSummary] = useState<DeviceHealthSummary | null>(null);
+  const [outcome, setOutcome] = useState<CommandOutcomeMessage | null>(null);
   const [enrollmentCode, setEnrollmentCode] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -120,7 +119,13 @@ const DevicesPage: React.FC = () => {
       setLoading(true);
       const currentPage = pageNum ?? page;
       const currentLimit = limit ?? rowsPerPage;
-      const devicesData = await apiService.getDevices({ page: currentPage + 1, limit: currentLimit });
+      // The tiles are counted by the server over the whole fleet. They used to be
+      // counted here from the current page of rows, while "Total" was the fleet total.
+      const [devicesData, fleetSummary] = await Promise.all([
+        apiService.getDevices({ page: currentPage + 1, limit: currentLimit }),
+        apiService.getDeviceHealthSummary(),
+      ]);
+      setSummary(fleetSummary);
       // Check if we have valid response structure
       if (!devicesData || typeof devicesData !== 'object') {
         throw new Error('Invalid API response structure');
@@ -150,15 +155,15 @@ const DevicesPage: React.FC = () => {
         deviceModel: device.model || 'Unknown Model',
         osVersion: device.androidVersion || device.osVersion || 'Unknown',
         manufacturer: device.manufacturer || 'Unknown',
-        isActive: device.status === 'ENROLLED' || device.status === 'ACTIVE',
-        batteryLevel: device.batteryLevel || 0,
-        isCharging: device.isCharging || false,
+        // Missing values stay missing: no invented "Just now" or 0% battery.
+        isActive: device.status === 'ACTIVE',
+        batteryLevel: typeof device.batteryLevel === 'number' ? device.batteryLevel : null,
+        isCharging: device.isCharging ?? false,
         latitude: device.location?.latitude,
         longitude: device.location?.longitude,
-        lastSeen: device.lastSeen || new Date().toISOString(),
-        enrolledAt: device.enrolledAt || device.createdAt || new Date().toISOString(),
-        status: (device.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOST') || 'INACTIVE',
-        complianceStatus: 'COMPLIANT' as const,
+        lastSeen: device.lastSeen ?? null,
+        enrolledAt: device.enrolledAt || device.createdAt,
+        status: device.status as DeviceStatus,
         assignedPolicies: device.policies?.map((p: any) => p.id) || []
       }));
       setDevices(mappedDevices);
@@ -178,38 +183,43 @@ const DevicesPage: React.FC = () => {
   // Real-time device updates
   useEffect(() => {
     const handleDeviceUpdate = (data: any) => {
-      console.log('📱 Received real-time device update:', data);
-      
-      // Update devices state with real-time data
-      setDevices(prevDevices => 
+      setDevices(prevDevices =>
         prevDevices.map(device => {
-          if (device.deviceId === data.deviceId) {
-            return {
-              ...device,
-              batteryLevel: data.batteryLevel || device.batteryLevel,
-              isCharging: data.isCharging !== undefined ? data.isCharging : device.isCharging,
-              latitude: data.location?.latitude || device.latitude,
-              longitude: data.location?.longitude || device.longitude,
-              lastSeen: data.lastSeen || new Date().toISOString(),
-              status: data.status || device.status,
-              isActive: data.status === 'ACTIVE'
-            };
-          }
-          return device;
+          if (device.deviceId !== data.deviceId) return device;
+          const status: DeviceStatus = data.status ?? device.status;
+          // `??`, not `||`: a battery of 0 is a reading, not a missing value.
+          return {
+            ...device,
+            batteryLevel: typeof data.batteryLevel === 'number' ? data.batteryLevel : device.batteryLevel,
+            isCharging: data.isCharging ?? device.isCharging,
+            latitude: data.location?.latitude ?? device.latitude,
+            longitude: data.location?.longitude ?? device.longitude,
+            lastSeen: data.lastSeen ?? data.timestamp ?? device.lastSeen,
+            status,
+            isActive: status === 'ACTIVE',
+          };
         })
       );
     };
 
-    // Import websocket service dynamically to avoid circular imports
+    // Imported dynamically to avoid circular imports. The clean-up used to be returned
+    // from inside this promise, where React never sees it, so every visit to the page
+    // added another set of listeners (and heartbeats were subscribed twice over).
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
     import('../../services/websocket').then(({ websocketService }) => {
-      websocketService.subscribeToHeartbeatUpdates(handleDeviceUpdate);
+      if (cancelled) return;
       websocketService.subscribeToDeviceUpdates(handleDeviceUpdate);
-      return () => {
+      unsubscribe = () => {
         websocketService.off('deviceHeartbeat', handleDeviceUpdate);
         websocketService.off('deviceStatusChanged', handleDeviceUpdate);
         websocketService.off('deviceEnrolled', handleDeviceUpdate);
       };
     });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, device: Device) => {
     setAnchorEl(event.currentTarget);
@@ -221,17 +231,20 @@ const DevicesPage: React.FC = () => {
   };
   const handleDeviceAction = async (action: string, device: Device) => {
     try {
-      console.log(`🔄 Executing ${action} command for device:`, device.deviceId);
       switch (action) {
-        case 'lock':
-          await apiService.sendCommand(device.id, 'LOCK_DEVICE', { 
+        case 'lock': {
+          const sent = await apiService.sendCommand(device.id, 'LOCK_DEVICE', {
             message: 'Device locked by administrator',
-            timeout: 300 
+            timeout: 300
           });
+          setOutcome(describeSingleCommand('Lock', device.deviceName, device.lastSeen, sent));
           break;
-        case 'unlock':
-          await apiService.sendCommand(device.id, 'UNLOCK_DEVICE', {});
+        }
+        case 'unlock': {
+          const sent = await apiService.sendCommand(device.id, 'UNLOCK_DEVICE', {});
+          setOutcome(describeSingleCommand('Unlock', device.deviceName, device.lastSeen, sent));
           break;
+        }
         case 'wipe':
           // The agent cannot erase a tablet yet (that needs Device Owner), so this used to
           // queue a WIPE_DEVICE command that failed on the device. What the server can do
@@ -305,18 +318,6 @@ const DevicesPage: React.FC = () => {
     setDialogType(null);
     setSelectedDevice(null);
     setEnrollmentCode('');
-  };
-  const formatLastSeen = (lastSeen: string) => {
-    const now = new Date();
-    const lastSeenDate = new Date(lastSeen);
-    const diffMs = now.getTime() - lastSeenDate.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffMins < 5) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
   };
   const generateProvisioningJson = () => {
     if (!enrollmentProfileId) return '';
@@ -402,10 +403,18 @@ const DevicesPage: React.FC = () => {
       {/* Top Metrics Cards */}
       <Grid container spacing={3} sx={{ mb: 5 }}>
         {[
-          { label: 'Total Devices', value: totalCount, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
-          { label: 'Active Right Now', value: devices.filter(d => d.isActive).length, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
-          { label: 'Suspended/Inactive', value: devices.filter(d => !d.isActive && d.status !== 'LOST').length, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-          { label: 'Lost or Wiped', value: devices.filter(d => d.status === 'LOST').length, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' }
+          { label: 'Total Devices', value: summary?.totalDevices ?? totalCount, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+          { label: 'Reporting Now', value: summary?.activeDevices, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+          {
+            label: 'Not Reporting',
+            value: summary ? (summary.inactiveDevices ?? 0) + (summary.enrolledDevices ?? 0) : undefined,
+            color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)'
+          },
+          {
+            label: 'Suspended or Revoked',
+            value: summary ? (summary.suspendedDevices ?? 0) + (summary.revokedDevices ?? 0) : undefined,
+            color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)'
+          }
         ].map((stat, i) => (
           <Grid item xs={12} sm={6} md={3} key={i}>
             <Card sx={{ 
@@ -428,7 +437,7 @@ const DevicesPage: React.FC = () => {
                   </Typography>
                 </Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                  {stat.value}
+                  {stat.value ?? '—'}
                 </Typography>
               </CardContent>
             </Card>
@@ -443,30 +452,7 @@ const DevicesPage: React.FC = () => {
       )}
 
       <Card sx={{ borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', border: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ px: 3, pt: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs 
-            value={tabValue} 
-            onChange={(_, newValue) => setTabValue(newValue)}
-            sx={{
-              '& .MuiTab-root': {
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                minWidth: 'auto',
-                px: 3,
-                py: 1.5,
-              }
-            }}
-          >
-            <Tab label="All Devices" />
-            <Tab label="Active" />
-            <Tab label="Issues" />
-            <Tab label="Groups" />
-          </Tabs>
-        </Box>
         <Box sx={{ p: 0 }}>
-
-          <TabPanel value={tabValue} index={0}>
             {loading ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, gap: 2 }}>
                 <CircularProgress size={32} thickness={4} />
@@ -508,9 +494,13 @@ const DevicesPage: React.FC = () => {
                         </TableCell>
                         <TableCell sx={{ py: 1.5, borderBottom: '1px solid', borderColor: '#f1f5f9' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Battery90 sx={{ fontSize: 16, color: device.batteryLevel < 20 ? '#ef4444' : device.batteryLevel < 50 ? '#f59e0b' : '#10b981' }} />
+                            <Battery90 sx={{
+                              fontSize: 16,
+                              color: device.batteryLevel === null ? '#94a3b8'
+                                : device.batteryLevel < 20 ? '#ef4444' : device.batteryLevel < 50 ? '#f59e0b' : '#10b981'
+                            }} />
                             <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
-                              {device.batteryLevel}% {device.isCharging ? '⚡' : ''}
+                              {formatBattery(device.batteryLevel)}{device.isCharging ? ' (charging)' : ''}
                             </Typography>
                           </Box>
                         </TableCell>
@@ -561,7 +551,7 @@ const DevicesPage: React.FC = () => {
                     ))}
                     {devices.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={canManageDevices ? 8 : 7} align="center">
+                        <TableCell colSpan={canManageDevices ? 6 : 5} align="center">
                           <Box sx={{ 
                             py: 8, 
                             px: 4,
@@ -621,19 +611,6 @@ const DevicesPage: React.FC = () => {
                 />
               </TableContainer>
             )}
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="body1">Active devices view - filtered by active status</Typography>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={2}>
-            <Typography variant="body1">Devices with compliance issues or alerts</Typography>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={3}>
-            <Typography variant="body1">Device groups and bulk management</Typography>
-          </TabPanel>
         </Box>
       </Card>
 
@@ -896,7 +873,10 @@ const DevicesPage: React.FC = () => {
             onClick={async () => {
               if (selectedDevice) {
                 try {
-                  await apiService.sendCommand(selectedDevice.id, commandType as any, commandParams);
+                  const sent = await apiService.sendCommand(selectedDevice.id, commandType as any, commandParams);
+                  setOutcome(describeSingleCommand(
+                    COMMAND_LABELS[commandType] ?? commandType, selectedDevice.deviceName, selectedDevice.lastSeen, sent
+                  ));
                   setError(null);
                   handleCloseDialog();
                   await fetchDevices();
@@ -980,6 +960,29 @@ const DevicesPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* What happened to the last command: sent now, or queued for an offline tablet. */}
+      {outcome && (
+        <Snackbar
+          open
+          onClose={(_, reason) => { if (reason !== 'clickaway') setOutcome(null); }}
+          autoHideDuration={12000}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
+          <Alert
+            severity={outcome.severity}
+            onClose={() => setOutcome(null)}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate('/dashboard/commands')}>
+                View
+              </Button>
+            }
+            sx={{ maxWidth: 560 }}
+          >
+            {outcome.message}
+          </Alert>
+        </Snackbar>
+      )}
 
       {/* Map View Floating Action Button */}
       <Fab

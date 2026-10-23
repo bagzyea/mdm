@@ -19,8 +19,7 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
-  Tabs,
-  Tab,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
@@ -41,6 +40,7 @@ import {
   Error as ErrorIcon,
   Schedule,
   PlayArrow,
+  Block,
   History as HistoryIcon,
   Tablet,
   TabletAndroid,
@@ -48,49 +48,47 @@ import {
 import { useAuthContext } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import StatusChip from '../../components/common/StatusChip';
-import type { CommandType } from '../../types';
+import type { CommandType, CommandStatus, DeviceStatus } from '../../types';
+import { formatLastSeen } from '../../utils/deviceDisplay';
+import { describeBulkCommand, CommandOutcomeMessage } from '../../utils/commandOutcome';
 
 interface Command {
   id: string;
   commandType: string;
-  deviceIds: string[];
+  /** The target device's identifier, as the device list shows it. */
+  deviceName: string;
   parameters: any;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
-  executedAt?: string;
-  completedAt?: string;
+  status: CommandStatus;
   result?: any;
-  error?: string;
-  createdBy: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 interface Device {
   id: string;
   deviceName: string;
   deviceModel: string;
-  isActive: boolean;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOST';
+  status: DeviceStatus;
+  lastSeen: string | null;
+}
+
+/** The server never sends commands to these; offering them only produces an error. */
+const REVOKED: DeviceStatus[] = ['SUSPENDED', 'WIPED'];
+const SETTLED: CommandStatus[] = ['EXECUTED', 'FAILED', 'CANCELLED'];
+
+/** Pulls the server's reason out of an error, whichever field it used. */
+function apiErrorMessage(err: any, fallback: string): string {
+  const data = err?.response?.data;
+  const details = Array.isArray(data?.errors)
+    ? data.errors.map((e: any) => e.message ?? e).join('; ')
+    : '';
+  return [data?.message ?? data?.error, details].filter(Boolean).join(': ') || err?.message || fallback;
 }
 
 interface CommandFormData {
   commandType: string;
   deviceIds: string[];
   parameters: any;
-}
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
 }
 
 const CommandsPage: React.FC = () => {
@@ -100,7 +98,7 @@ const CommandsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [tabValue, setTabValue] = useState(0);
+  const [outcome, setOutcome] = useState<CommandOutcomeMessage | null>(null);
   const [formData, setFormData] = useState<CommandFormData>({
     commandType: '',
     deviceIds: [],
@@ -123,36 +121,23 @@ const CommandsPage: React.FC = () => {
   const fetchCommands = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Fetching commands...');
-      
       const commandsData = await apiService.getCommands({ limit: 100 });
-      console.log('📨 Commands fetched:', { 
-        count: commandsData.data?.length || 0, 
-        total: commandsData.pagination?.total || 0,
-        hasPagination: !!commandsData.pagination
-      });
-      
-      // Map the API response to the local Command interface
-      const mappedCommands: Command[] = (commandsData.data || []).map(command => ({
+
+      const mappedCommands: Command[] = (commandsData.data || []).map((command: any) => ({
         id: command.id,
         commandType: command.command,
-        deviceIds: [command.deviceId],
+        deviceName: command.device?.deviceId ?? command.deviceId,
         parameters: command.parameters,
-        status: command.status as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED',
-        ...(command.executedAt !== undefined ? { executedAt: command.executedAt } : {}),
-        ...(command.completedAt !== undefined ? { completedAt: command.completedAt } : {}),
+        status: command.status as CommandStatus,
         ...(command.result !== undefined ? { result: command.result } : {}),
-        ...(command.error !== undefined ? { error: command.error } : {}),
-        createdBy: 'Admin', // Would need to be populated from API
-        createdAt: command.createdAt
+        createdAt: command.createdAt,
+        ...(command.updatedAt !== undefined ? { updatedAt: command.updatedAt } : {}),
       }));
-      
+
       setCommands(mappedCommands);
       setError(null);
-      console.log('✅ Commands loaded successfully:', mappedCommands.length);
     } catch (err: any) {
-      console.error('❌ Error fetching commands:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to fetch commands');
+      setError(apiErrorMessage(err, 'Failed to fetch commands'));
     } finally {
       setLoading(false);
     }
@@ -160,22 +145,21 @@ const CommandsPage: React.FC = () => {
 
   const fetchDevices = async () => {
     try {
-      console.log('🔄 Fetching devices for commands...');
-      const devicesData = await apiService.getDevices({ limit: 100 });
-      
-      // Map to simplified Device interface for commands
+      // Not limit 100: the server treats exactly 100 as "every device, with its recent
+      // commands and events". A searchable picker replaces this list at fleet scale.
+      const devicesData = await apiService.getDevices({ limit: 500 });
+
       const mappedDevices: Device[] = (devicesData.data || []).map(device => ({
         id: device.id,
         deviceName: device.deviceId,
         deviceModel: device.model,
-        isActive: device.status === 'ENROLLED' || device.status === 'ACTIVE',
-        status: device.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOST'
+        status: device.status,
+        lastSeen: device.lastSeen ?? null,
       }));
-      
+
       setDevices(mappedDevices);
-      console.log('✅ Devices loaded for commands:', mappedDevices.length);
     } catch (err: any) {
-      console.error('❌ Failed to fetch devices:', err);
+      setError(apiErrorMessage(err, 'Failed to load devices'));
     }
   };
 
@@ -186,35 +170,20 @@ const CommandsPage: React.FC = () => {
 
   const handleSendCommand = async () => {
     try {
-      await apiService.post('/commands', formData);
+      // The API field is `command`. This page used to post `commandType`, which the
+      // server's validation refuses, so no command was ever sent from here.
+      const response = await apiService.sendCommandToMultipleDevices({
+        command: formData.commandType as CommandType,
+        deviceIds: formData.deviceIds,
+        parameters: formData.parameters,
+      });
+      const label = commandTypes.find(c => c.value === formData.commandType)?.label ?? formData.commandType;
+      setOutcome(describeBulkCommand(label, response));
       await fetchCommands();
       handleCloseDialog();
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to send command');
-    }
-  };
-
-  const handleQuickCommand = async (commandType: string, deviceId?: string) => {
-    const deviceIds = deviceId ? [deviceId] : [];
-    
-    if (deviceIds.length === 0 && !deviceId) {
-      setError('Please select at least one device');
-      return;
-    }
-
-    try {
-      const commandData: CommandFormData = {
-        commandType,
-        deviceIds,
-        parameters: getDefaultParameters(commandType),
-      };
-
-      await apiService.post('/commands', commandData);
-      await fetchCommands();
-      setError(null);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to send command');
+      setError(apiErrorMessage(err, 'Failed to send command'));
     }
   };
 
@@ -227,11 +196,12 @@ const CommandsPage: React.FC = () => {
     }
   };
 
-  const handleOpenDialog = () => {
+  /** Opens the send dialog, optionally with a command already chosen (the quick actions). */
+  const handleOpenDialog = (commandType = '') => {
     setFormData({
-      commandType: '',
+      commandType,
       deviceIds: [],
-      parameters: {},
+      parameters: commandType ? getDefaultParameters(commandType) : {},
     });
     setOpenDialog(true);
   };
@@ -258,16 +228,20 @@ const CommandsPage: React.FC = () => {
     });
   };
 
-  const getStatusIcon = (status: string) => {
+  // The server's statuses. This handled IN_PROGRESS and COMPLETED, which it never sends,
+  // so an executed command showed the "waiting" clock.
+  const getStatusIcon = (status: CommandStatus) => {
     switch (status) {
       case 'PENDING':
-        return <Schedule color="info" />;
-      case 'IN_PROGRESS':
-        return <PlayArrow color="warning" />;
-      case 'COMPLETED':
+        return <Tooltip title="Waiting for the tablet to check in"><Schedule color="info" /></Tooltip>;
+      case 'SENT':
+        return <Tooltip title="Delivered; waiting for the result"><PlayArrow color="warning" /></Tooltip>;
+      case 'EXECUTED':
         return <CheckCircle color="success" />;
       case 'FAILED':
         return <ErrorIcon color="error" />;
+      case 'CANCELLED':
+        return <Block color="disabled" />;
       default:
         return <Schedule />;
     }
@@ -309,7 +283,9 @@ const CommandsPage: React.FC = () => {
     }
   };
 
-  const canExecuteCommands = hasPermission('commands', 'execute');
+  // `create` is the permission the API checks. No role has `execute`, so only super
+  // admins (who match everything) used to see these buttons.
+  const canExecuteCommands = hasPermission('commands', 'create');
 
   return (
     <Box sx={{ p: 3 }}>
@@ -322,14 +298,14 @@ const CommandsPage: React.FC = () => {
             <Button
               variant="outlined"
               startIcon={<Refresh />}
-              onClick={fetchCommands}
+              onClick={() => { fetchCommands(); fetchDevices(); }}
             >
               Refresh
             </Button>
             <Button
               variant="contained"
               startIcon={<Send />}
-              onClick={handleOpenDialog}
+              onClick={() => handleOpenDialog()}
             >
               Send Command
             </Button>
@@ -357,7 +333,7 @@ const CommandsPage: React.FC = () => {
                     fullWidth
                     variant="outlined"
                     startIcon={cmd.icon}
-                    onClick={() => handleQuickCommand(cmd.value)}
+                    onClick={() => handleOpenDialog(cmd.value)}
                     sx={{ height: 64, flexDirection: 'column', gap: 0.5 }}
                   >
                     <Typography variant="caption" textAlign="center">
@@ -373,16 +349,9 @@ const CommandsPage: React.FC = () => {
 
       <Card>
         <CardContent>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-            <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-              <Tab label="Command History" />
-              <Tab label="Active Commands" />
-              <Tab label="Failed Commands" />
-              <Tab label="Statistics" />
-            </Tabs>
-          </Box>
-
-          <TabPanel value={tabValue} index={0}>
+          <Typography variant="h6" gutterBottom>
+            Command History
+          </Typography>
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress />
@@ -393,7 +362,7 @@ const CommandsPage: React.FC = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell>Command</TableCell>
-                      <TableCell>Targets</TableCell>
+                      <TableCell>Device</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Duration</TableCell>
                       <TableCell>Created</TableCell>
@@ -410,15 +379,12 @@ const CommandsPage: React.FC = () => {
                               <Typography variant="subtitle2">
                                 {commandTypes.find(c => c.value === command.commandType)?.label || command.commandType}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                by {command.createdBy}
-                              </Typography>
                             </Box>
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
-                            {command.deviceIds.length} device{command.deviceIds.length !== 1 ? 's' : ''}
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                            {command.deviceName}
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -429,7 +395,9 @@ const CommandsPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            {formatDuration(command.createdAt, command.completedAt)}
+                            {SETTLED.includes(command.status)
+                              ? formatDuration(command.createdAt, command.updatedAt)
+                              : `waiting ${formatDuration(command.createdAt)}`}
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -459,7 +427,7 @@ const CommandsPage: React.FC = () => {
                               <Button
                                 variant="contained"
                                 startIcon={<Send />}
-                                onClick={handleOpenDialog}
+                                onClick={() => handleOpenDialog()}
                               >
                                 Send Command
                               </Button>
@@ -472,19 +440,6 @@ const CommandsPage: React.FC = () => {
                 </Table>
               </TableContainer>
             )}
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="body1">Active commands with real-time status updates</Typography>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={2}>
-            <Typography variant="body1">Failed commands requiring attention</Typography>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={3}>
-            <Typography variant="body1">Command execution statistics and analytics</Typography>
-          </TabPanel>
         </CardContent>
       </Card>
 
@@ -537,14 +492,20 @@ const CommandsPage: React.FC = () => {
                     </Box>
                   )}
                 >
+                  {/* Offline tablets are offered too: the server queues the command until the
+                      tablet checks in. Only ACTIVE devices used to be listed, so a tablet out
+                      of coverage, which is most of them, could not be sent anything. */}
                   {devices
-                    .filter(device => device.isActive && device.status === 'ACTIVE')
+                    .filter(device => !REVOKED.includes(device.status))
                     .map((device) => (
                       <MenuItem key={device.id} value={device.id}>
                         <Box>
                           <Typography variant="subtitle2">{device.deviceName}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {device.deviceModel}
+                            {device.deviceModel} ·{' '}
+                            {device.status === 'ACTIVE'
+                              ? 'reporting now'
+                              : `offline, last seen ${formatLastSeen(device.lastSeen)}: will be queued`}
                           </Typography>
                         </Box>
                       </MenuItem>
@@ -569,6 +530,20 @@ const CommandsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* What happened to the command just sent: delivered now, or queued until reconnect. */}
+      {outcome && (
+        <Snackbar
+          open
+          onClose={(_, reason) => { if (reason !== 'clickaway') setOutcome(null); }}
+          autoHideDuration={12000}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
+          <Alert severity={outcome.severity} onClose={() => setOutcome(null)} sx={{ maxWidth: 560 }}>
+            {outcome.message}
+          </Alert>
+        </Snackbar>
+      )}
     </Box>
   );
 };

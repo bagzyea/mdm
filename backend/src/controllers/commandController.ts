@@ -122,7 +122,9 @@ export const createCommand = async (req: Request, res: Response): Promise<void> 
       commands: result.commands,
       devicesFound: result.devicesFound,
       devicesRequested: result.devicesRequested,
-      devicesSkipped: result.devicesSkipped
+      devicesSkipped: result.devicesSkipped,
+      notificationsSent: result.notificationsSent,
+      expiresAt: result.expiresAt
     });
   } catch (error) {
     if (sendCommandError(res, error)) return;

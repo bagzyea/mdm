@@ -248,6 +248,36 @@ describe('CommandService.createCommands — the one creation path', () => {
     expect((mockPrisma.deviceEvent as any).createMany).toHaveBeenCalled();
   });
 
+  it('reports which commands were delivered and when queued ones expire', async () => {
+    const createdAt = new Date('2026-10-15T09:00:00Z');
+    (mockPrisma.device as any).findMany.mockResolvedValue([
+      { id: 'db-1', deviceId: 'tab-online', status: 'ACTIVE', isRetired: false },
+      { id: 'db-2', deviceId: 'tab-offline', status: 'INACTIVE', isRetired: false },
+    ]);
+    (mockPrisma.remoteCommand as any).createManyAndReturn.mockImplementation(({ data }: any) =>
+      data.map((d: any, i: number) => ({ id: `cmd-${i}`, createdAt, ...d }))
+    );
+    (mockPrisma.remoteCommand.update as jest.Mock).mockResolvedValue({});
+    const io = {
+      to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+      // Only the first tablet has an open socket.
+      in: jest.fn((room: string) => ({
+        fetchSockets: jest.fn().mockResolvedValue(room.includes('tab-online') ? [{}] : []),
+      })),
+    } as any;
+
+    const result = await new CommandService(io).createCommands({
+      deviceIds: ['tab-online', 'tab-offline'],
+      command: 'LOCK_DEVICE',
+    });
+
+    // The rows are read back before dispatch; the response must not say PENDING for a
+    // command that was delivered, or the dashboard tells the operator it was queued.
+    expect(result.commands.map((c: any) => c.status)).toEqual(['SENT', 'PENDING']);
+    expect(result.notificationsSent).toBe(1);
+    expect(result.expiresAt.getTime()).toBe(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+  });
+
   it('reports no eligible devices when every target is revoked', async () => {
     (mockPrisma.device as any).findMany.mockResolvedValue([
       { id: 'db-2', deviceId: 'tab-2', status: 'WIPED', isRetired: false },

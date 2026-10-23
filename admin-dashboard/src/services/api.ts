@@ -14,6 +14,7 @@ import {
   PolicyRules,
   DeviceAnalytics,
   DeviceHealthSummary,
+  SendCommandsResponse,
   Certificate,
   CertificateRequest,
   DeviceCertificate,
@@ -301,8 +302,16 @@ class ApiService {
     return response.data;
   }
 
-  async sendCommand(deviceId: string, command: CommandType, parameters?: any): Promise<RemoteCommand> {
-    const response = await this.axiosInstance.post<{ commands: RemoteCommand[]; message: string }>('/commands', {
+  /**
+   * Send one command to one device. The returned status is SENT when the tablet was
+   * connected and PENDING when it waits for the tablet's next check-in, until expiresAt.
+   */
+  async sendCommand(
+    deviceId: string,
+    command: CommandType,
+    parameters?: any
+  ): Promise<RemoteCommand & { expiresAt?: string }> {
+    const response = await this.axiosInstance.post<SendCommandsResponse>('/commands', {
       deviceIds: [deviceId],
       command,
       parameters: parameters || {},
@@ -310,7 +319,7 @@ class ApiService {
     });
     const cmd = response.data.commands[0];
     if (!cmd) throw new Error('No command returned from server');
-    return cmd;
+    return response.data.expiresAt ? { ...cmd, expiresAt: response.data.expiresAt } : cmd;
   }
 
   async sendCommandToMultipleDevices(commandData: {
@@ -320,8 +329,8 @@ class ApiService {
     priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
     executeAt?: string;
     expiresAt?: string;
-  }): Promise<{ commands: RemoteCommand[]; message: string }> {
-    const response = await this.axiosInstance.post<{ commands: RemoteCommand[]; message: string }>('/commands', commandData);
+  }): Promise<SendCommandsResponse> {
+    const response = await this.axiosInstance.post<SendCommandsResponse>('/commands', commandData);
     return response.data;
   }
 
@@ -362,25 +371,22 @@ class ApiService {
       console.log('🔑 Current auth token:', this.getToken() ? 'Present' : 'Missing');
       
       // Get actual data from multiple endpoints
-      const [devicesData, policiesData, usersData, commandsData] = await Promise.all([
-        this.getDevices({ limit: 100 }), // Get devices to analyze status
+      // Device figures come from the server's counts. This used to fetch the device list
+      // with limit 100, which the server treats as "every device, with recent commands
+      // and events" — the whole fleet, loaded into the browser every 30 seconds.
+      const [deviceSummary, policiesData, usersData, commandsData] = await Promise.all([
+        this.getDeviceHealthSummary(),
         this.getPolicies({ limit: 100 }), // Get policies
         this.getUsers({ limit: 100 }), // Get users count
         this.getCommandStatistics() // Get command statistics
       ]);
 
       console.log('📊 API Responses:', { 
-        devices: { total: devicesData.pagination?.total || 0, count: devicesData.data?.length || 0 },
         policies: { total: policiesData.pagination?.total || 0, count: policiesData.data?.length || 0 },
         users: { total: usersData.pagination?.total || 0, count: usersData.data?.length || 0 },
         commands: commandsData.summary || {}
       });
 
-      // Analyze device statuses
-      const devices = devicesData.data || [];
-      const activeDevices = devices.filter(d => d.status === 'ACTIVE' || d.status === 'ENROLLED').length;
-      const inactiveDevices = devices.filter(d => d.status === 'INACTIVE').length;
-      const suspendedDevices = devices.filter(d => d.status === 'SUSPENDED').length;
 
       // Analyze policies
       const policies = policiesData.data || [];
@@ -394,10 +400,12 @@ class ApiService {
       const failedCommands = commandsByStatus.find(s => s.status === 'FAILED')?.count || 0;
 
       const stats = {
-        totalDevices: devicesData.pagination?.total || 0,
-        activeDevices,
-        inactiveDevices,
-        suspendedDevices,
+        totalDevices: deviceSummary.totalDevices,
+        activeDevices: deviceSummary.activeDevices,
+        enrolledDevices: deviceSummary.enrolledDevices ?? 0,
+        inactiveDevices: deviceSummary.inactiveDevices ?? 0,
+        suspendedDevices: deviceSummary.suspendedDevices ?? 0,
+        revokedDevices: deviceSummary.revokedDevices ?? 0,
         totalPolicies: policiesData.pagination?.total || 0,
         activePolicies,
         pendingCommands,
@@ -426,8 +434,10 @@ class ApiService {
       return {
         totalDevices: 0,
         activeDevices: 0,
+        enrolledDevices: 0,
         inactiveDevices: 0,
         suspendedDevices: 0,
+        revokedDevices: 0,
         totalPolicies: 0,
         activePolicies: 0,
         pendingCommands: 0,
@@ -825,9 +835,7 @@ export const apkVaultService = {
     const response: { url: string; expiresAt: string } = await apiService.get(
       `/apk-registry/${id}/download-url`
     );
-    return new URL(
-      response.url,
-      `${window.location.protocol}//${window.location.hostname}:5001`
-    ).toString();
+    // Relative URLs resolve against the dashboard, which proxies /downloads to the API.
+    return new URL(response.url, window.location.origin).toString();
   },
 };

@@ -199,9 +199,14 @@ export interface CommandResult {
 
 export interface DashboardStats {
   totalDevices: number;
+  /** Reporting now (status ACTIVE). */
   activeDevices: number;
+  /** Enrolled, no first heartbeat yet. */
+  enrolledDevices: number;
   inactiveDevices: number;
   suspendedDevices: number;
+  /** Marked WIPED: credentials revoked. */
+  revokedDevices: number;
   totalPolicies: number;
   activePolicies: number;
   pendingCommands: number;
@@ -331,12 +336,34 @@ export interface DeviceAnalytics {
   timestamp: Date;
 }
 
+/** GET /api/devices/health/summary: counted by the server, over the whole fleet. */
 export interface DeviceHealthSummary {
   totalDevices: number;
   activeDevices: number;
+  enrolledDevices?: number;
+  inactiveDevices?: number;
+  suspendedDevices?: number;
+  revokedDevices?: number;
+  retiredDevices?: number;
+  byStatus?: Record<'ENROLLED' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'WIPED', number>;
   lowBatteryDevices: number;
   lowStorageDevices: number;
+  /** Not seen for more than 24 hours, among devices that can still report. */
   offlineDevices: number;
+  lastSeen?: { within24h: number; from1to3Days: number; from3to7Days: number; over7Days: number };
+}
+
+/** POST /api/commands */
+export interface SendCommandsResponse {
+  message: string;
+  commands: RemoteCommand[];
+  devicesFound?: number;
+  devicesRequested?: number;
+  /** Suspended, revoked or retired devices, which are never sent commands. */
+  devicesSkipped?: string[];
+  notificationsSent?: number;
+  /** When commands still waiting for their tablet are given up. */
+  expiresAt?: string;
 }
 
 // Advanced Security Types

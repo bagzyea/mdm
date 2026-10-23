@@ -152,10 +152,14 @@ const DashboardPage: React.FC = () => {
   const activeDevices = merged.activeDevices ?? 0;
   const reachablePct = totalDevices > 0 ? (activeDevices / totalDevices) * 100 : 0;
 
+  // Counted by the server over the whole fleet (GET /devices/health/summary). These used
+  // to be counted in the browser from the first page of the device list.
   const fleetSegments: Segment[] = [
     { label: 'Active', value: activeDevices, tone: 'good' },
+    { label: 'Awaiting first report', value: merged.enrolledDevices ?? 0, tone: 'info' },
     { label: 'Inactive', value: merged.inactiveDevices ?? 0, tone: 'warning' },
     { label: 'Suspended', value: merged.suspendedDevices ?? 0, tone: 'critical' },
+    { label: 'Revoked', value: merged.revokedDevices ?? 0, tone: 'neutral' },
   ];
 
   // ---- Needs attention, ranked by severity --------------------------------
