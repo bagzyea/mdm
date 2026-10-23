@@ -54,26 +54,29 @@ interface VaultApp {
   uploadedAt: string;
 }
 
+// Must match the APKCategory enum in backend/prisma/schema.prisma. The previous list
+// (Business, Security, Utilities, Navigation, Other) did not, and the database refused
+// every upload that used one of them, including the default.
 const CATEGORY_OPTIONS = [
-  { value: 'BUSINESS', label: 'Business' },
+  { value: 'CENSUS', label: 'Census' },
+  { value: 'GOVERNMENT', label: 'Government' },
   { value: 'PRODUCTIVITY', label: 'Productivity' },
+  { value: 'UTILITY', label: 'Utility' },
   { value: 'COMMUNICATION', label: 'Communication' },
-  { value: 'SECURITY', label: 'Security' },
-  { value: 'UTILITIES', label: 'Utilities' },
-  { value: 'NAVIGATION', label: 'Navigation' },
   { value: 'MEDIA', label: 'Media' },
-  { value: 'OTHER', label: 'Other' },
+  { value: 'EDUCATION', label: 'Education' },
+  { value: 'CUSTOM', label: 'Custom' },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  BUSINESS: '#3b82f6',
+  CENSUS: '#3b82f6',
+  GOVERNMENT: '#0ea5e9',
   PRODUCTIVITY: '#10b981',
+  UTILITY: '#f59e0b',
   COMMUNICATION: '#8b5cf6',
-  SECURITY: '#ef4444',
-  UTILITIES: '#f59e0b',
-  NAVIGATION: '#06b6d4',
   MEDIA: '#ec4899',
-  OTHER: '#6b7280',
+  EDUCATION: '#06b6d4',
+  CUSTOM: '#6b7280',
 };
 
 const formatBytes = (sizeStr: string): string => {
@@ -102,7 +105,7 @@ const AppVaultPage: React.FC = () => {
     appName: '',
     displayName: '',
     description: '',
-    category: 'BUSINESS',
+    category: 'CUSTOM',
     version: '1.0.0',
     versionCode: '1',
   });
@@ -186,7 +189,7 @@ const AppVaultPage: React.FC = () => {
         setSelectedFile(null);
         setUploadProgress(0);
         setUploading(false);
-        setUploadForm({ packageName: '', appName: '', displayName: '', description: '', category: 'BUSINESS', version: '1.0.0', versionCode: '1' });
+        setUploadForm({ packageName: '', appName: '', displayName: '', description: '', category: 'CUSTOM', version: '1.0.0', versionCode: '1' });
         fetchApps();
         setSnackbar({ open: true, message: 'App uploaded successfully to the Vault!', severity: 'success' });
       }, 500);

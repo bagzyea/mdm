@@ -258,8 +258,17 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
   next();
 };
 
+// The APK upload route enforces its own, larger limit (multer, 500 MB). Applying the
+// global cap to it as well meant no app over 10 MB could ever be added to the App Vault.
+const OWN_SIZE_LIMIT_ROUTES = new Set(['/api/apk-registry/upload']);
+
 // Request validation middleware
 export const validateRequest = (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'POST' && OWN_SIZE_LIMIT_ROUTES.has(req.path)) {
+    next();
+    return;
+  }
+
   // Validate request size
   const maxSize = 10 * 1024 * 1024; // 10MB
   const contentLength = parseInt(req.get('Content-Length') || '0', 10);

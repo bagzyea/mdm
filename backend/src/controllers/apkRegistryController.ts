@@ -35,10 +35,21 @@ export const uploadAPK = async (req: Request, res: Response): Promise<void> => {
       appName = file.originalname.replace('.apk', ''),
       displayName = file.originalname.replace('.apk', ''),
       description = '',
-      category = 'BUSINESS',
+      category = 'CUSTOM',
       version,
       versionCode
     } = req.body;
+
+    // Checked before any work: an unknown category used to reach Prisma, fail with a 500
+    // and leave the uploaded file behind on disk.
+    if (!Object.values(APKCategory).includes(category)) {
+      await discardUpload(file.path);
+      res.status(400).json({
+        message: `Unknown category "${category}". Expected one of: ${Object.values(APKCategory).join(', ')}`,
+        code: 'INVALID_CATEGORY'
+      });
+      return;
+    }
 
     // The APK's own manifest is authoritative for its identity. Previously packageName
     // came from the request body with a default of 'com.example.app' and was never
